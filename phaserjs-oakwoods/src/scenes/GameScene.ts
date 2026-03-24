@@ -1,18 +1,31 @@
 import Phaser from "phaser";
 import { Player } from "../entities/Player";
 import { HUD } from "../ui/HUD";
-import { Combat } from "../systems/Combat";
+import { Pachita } from "../entities/Pachita";
+import { EventBus } from "../core/EventBus";
+import { SaveSystem } from "../core/SaveSystem";
+import { PhaserEnemy } from "../entities/PhaserEnemy";
+import { CombatSystem } from "../systems/CombatSystem";
+import { EnemyAISystem } from "../systems/EnemyAISystem";
+import { ProgressionSystem } from "../systems/ProgressionSystem";
+import { FeedbackSystem } from "../systems/FeedbackSystem";
+import { GameLoopSystem } from "../systems/GameLoopSystem";
+import { DebugSystem } from "../systems/DebugSystem";
+import { AudioSystem } from "../core/AudioSystem";
 
 export class GameScene extends Phaser.Scene {
   private groundLayer!: Phaser.Tilemaps.TilemapLayer;
   private map!: Phaser.Tilemaps.Tilemap;
+  private platforms!: Phaser.Physics.Arcade.StaticGroup;
   private player!: Player;
   private hud!: HUD;
+  private pachita!: Pachita;
   private hazards!: Phaser.Physics.Arcade.Group;
-  private enemies!: Phaser.Physics.Arcade.Group;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private dashKey!: Phaser.Input.Keyboard.Key;
   private attackKey!: Phaser.Input.Keyboard.Key;
+  private healKey!: Phaser.Input.Keyboard.Key;
+  private transformKey!: Phaser.Input.Keyboard.Key;
 
   // Background layers for parallax scrolling
   private bgLayer1!: Phaser.GameObjects.TileSprite;
@@ -22,8 +35,42 @@ export class GameScene extends Phaser.Scene {
   // Track how far ground has been generated
   private groundGeneratedToX: number = 0;
 
-  // Attack state
-  private isAttacking: boolean = false;
+  // Sistemas centralizados
+  private combatSystem!: CombatSystem;
+  private enemyAISystem!: EnemyAISystem;
+  private progressionSystem!: ProgressionSystem;
+  private feedbackSystem!: FeedbackSystem;
+  private gameLoopSystem!: GameLoopSystem;
+  private debugSystem!: DebugSystem;
+  private audioSystem!: AudioSystem;
+
+  // Inicializar sistemas centralizados
+  private initializeSystems(): void {
+    try {
+      this.audioSystem = new AudioSystem(this);
+      this.combatSystem = new CombatSystem(this, this.enemyAISystem.getEnemiesGroup());
+      this.combatSystem.setEnemyMapping(this.enemyAISystem.getEnemyMapping());
+      this.progressionSystem = new ProgressionSystem(this, this.player, this.pachita);
+      this.feedbackSystem = new FeedbackSystem(this);
+      this.gameLoopSystem = new GameLoopSystem(this);
+      this.debugSystem = new DebugSystem(this, this.player, this.pachita, this.enemyAISystem);
+      
+      // Conectar audio con el jugador
+      this.player.setAudioSystem(this.audioSystem);
+      
+      // Inicializar sistemas
+      this.enemyAISystem.initialize();
+      this.progressionSystem.initialize();
+      this.gameLoopSystem.initialize();
+      
+      // Configurar colisiones
+      this.combatSystem.setupPlayerEnemyCollision(this.player);
+      
+      console.log("✅ Sistemas inicializados correctamente");
+    } catch (error) {
+      console.error("❌ Error inicializando sistemas:", error);
+    }
+  }
 
   constructor() {
     super("GameScene");
@@ -114,6 +161,16 @@ export class GameScene extends Phaser.Scene {
     // === PLAYER CHARACTER ===
     // Create custom player instance
     this.player = new Player(this, 100, 120);
+    this.pachita = new Pachita(this, this.player);
+    
+    // Conectar Pachita con Player para bonos de combate
+    this.player.setPachita(this.pachita);
+
+    // Inicializar EnemyAI primero
+    this.enemyAISystem = new EnemyAISystem(this, this.player);
+    
+    // Inicializar sistemas centralizados (después de crear jugador y pachita)
+    this.initializeSystems();
 
     // Add collision between player and ground
     this.physics.add.collider(this.player, this.groundLayer);
@@ -129,18 +186,33 @@ export class GameScene extends Phaser.Scene {
     // === ANIMATIONS ===
     this.createAnimations();
 
-    // === INPUT ===
+    // === INPUT === (movido al final para asegurar que todo esté inicializado)
     this.cursors = this.input.keyboard!.createCursorKeys();
     this.dashKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.attackKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.X);
+    this.healKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.C);
+    this.transformKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.V);
+
+    // Tecla ESC para pausar
+    this.input.keyboard!.on("keydown-ESC", () => {
+      this.scene.pause();
+      this.scene.launch("PauseScene");
+    });
+
+    console.log("✅ Input configurado correctamente");
 
     // === HUD ===
-    this.hud = new HUD(this, this.player);
+    this.hud = new HUD(this, this.player, this.pachita);
 
     // Escuchar evento de muerte
     this.player.on("player_died", () => {
-      this.showGameOver();
+      this.gameLoopSystem.handlePlayerDeath();
     });
+
+    // === PLATFORMS ===
+    // Eliminado temporalmente para debuggear movimiento del personaje
+    // this.platforms = this.physics.add.staticGroup();
+    // this.createPlatforms();
 
     // === HAZARDS ===
     this.hazards = this.physics.add.group();
@@ -155,84 +227,79 @@ export class GameScene extends Phaser.Scene {
       (hazard.body as Phaser.Physics.Arcade.Body).setSize(15, 15);
     });
 
+    // Colision jugador con plataformas (comentado temporalmente)
+    // this.physics.add.collider(this.player, this.platforms);
+
+    // Colision jugador con hazards
     this.physics.add.overlap(this.player, this.hazards, (playerObj, hazardObj) => {
       const p = playerObj as Player;
       // El jugador ya tiene su propia lógica de i-frames y muerte
       p.takeDamage(10);
     });
 
-    // === ENEMIGOS DE PRUEBA ===
-    this.enemies = this.physics.add.group();
-    const enemy = this.add.rectangle(600, groundY - 20, 32, 32, 0xff0000);
-    this.enemies.add(enemy);
-    (enemy.body as Phaser.Physics.Arcade.Body).setImmovable(true).setAllowGravity(false);
+    // === ENEMIGOS ===
+    // El sistema de IA maneja todo el spawn y colisiones
 
-    // Colisión Jugador ataca enemigo
-    this.physics.add.overlap(this.player, this.enemies, (pObj, eObj) => {
-      const p = pObj as Player;
-      const e = eObj as Phaser.GameObjects.Rectangle;
-      
-      // Si el jugador está atacando, el enemigo desaparece
-      if (p.getIsAttacking()) {
-        this.tweens.add({
-          targets: e,
-          alpha: 0,
-          scale: 0,
-          duration: 200,
-          onComplete: () => e.destroy()
-        });
-      } else {
-        // Si no ataca, el enemigo le hace daño
-        p.takeDamage(5);
-      }
-    });
   }
 
-  private showGameOver(): void {
-    const { width, height } = this.cameras.main;
 
-    // Fondo oscuro semi-transparente
-    const bg = this.add.graphics();
-    bg.fillStyle(0x000000, 0.7);
-    bg.fillRect(0, 0, width, height);
-    bg.setScrollFactor(0).setDepth(1000);
+  /**
+   * Crea plataformas a diferentes alturas
+   */
+  private createPlatforms(): void {
+    const groundY = 184;
 
-    // Texto de Game Over
-    this.add.text(width / 2, height / 2 - 30, "GAME OVER", {
-      fontSize: "32px",
-      color: "#ff0000",
-      fontFamily: "Arial Black",
-      stroke: "#000000",
-      strokeThickness: 4
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(1001);
+    // Plataforma 1: Salto inicial (fácilmente accesible)
+    const platform1 = this.physics.add.sprite(250, groundY - 45, "oakwoods-grass1").setOrigin(0.5, 1);
+    platform1.setDisplaySize(90, 12);
+    this.platforms.add(platform1);
+    (platform1.body as Phaser.Physics.Arcade.Body).setAllowGravity(false).setImmovable(true);
 
-    // Botón Reintentar
-    const retryBtn = this.add.text(width / 2, height / 2 + 20, "REINTENTAR", {
-      fontSize: "16px",
-      color: "#ffffff",
-      backgroundColor: "#333333",
-      padding: { x: 10, y: 5 }
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(1001).setInteractive({ useHandCursor: true });
+    // Plataforma 2: Nivel medio (requiere buen salto)
+    const platform2 = this.physics.add.sprite(450, groundY - 80, "oakwoods-grass2").setOrigin(0.5, 1);
+    platform2.setDisplaySize(100, 12);
+    this.platforms.add(platform2);
+    (platform2.body as Phaser.Physics.Arcade.Body).setAllowGravity(false).setImmovable(true);
 
-    retryBtn.on("pointerover", () => retryBtn.setStyle({ color: "#ffff00" }));
-    retryBtn.on("pointerout", () => retryBtn.setStyle({ color: "#ffffff" }));
-    retryBtn.on("pointerdown", () => {
-      this.scene.restart();
-    });
+    // Plataforma 3: Nivel alto (desafío pero alcanzable)
+    const platform3 = this.physics.add.sprite(650, groundY - 110, "oakwoods-grass3").setOrigin(0.5, 1);
+    platform3.setDisplaySize(95, 12);
+    this.platforms.add(platform3);
+    (platform3.body as Phaser.Physics.Arcade.Body).setAllowGravity(false).setImmovable(true);
 
-    // Botón Salir (reiniciar a la pantalla de carga o título)
-    const exitBtn = this.add.text(width / 2, height / 2 + 55, "SALIR", {
-      fontSize: "16px",
-      color: "#ffffff",
-      backgroundColor: "#333333",
-      padding: { x: 10, y: 5 }
-    }).setOrigin(0.5).setScrollFactor(0).setDepth(1001).setInteractive({ useHandCursor: true });
+    // Plataforma 4: Secuencia de saltos (intermedia)
+    const platform4 = this.physics.add.sprite(800, groundY - 65, "oakwoods-grass1").setOrigin(0.5, 1);
+    platform4.setDisplaySize(80, 12);
+    this.platforms.add(platform4);
+    (platform4.body as Phaser.Physics.Arcade.Body).setAllowGravity(false).setImmovable(true);
 
-    exitBtn.on("pointerover", () => exitBtn.setStyle({ color: "#ff0000" }));
-    exitBtn.on("pointerout", () => exitBtn.setStyle({ color: "#ffffff" }));
-    exitBtn.on("pointerdown", () => {
-      this.scene.start("BootScene");
-    });
+    // Plataforma 5: Recompensa alta (máximo desafío)
+    const platform5 = this.physics.add.sprite(1000, groundY - 95, "oakwoods-grass2").setOrigin(0.5, 1);
+    platform5.setDisplaySize(85, 12);
+    this.platforms.add(platform5);
+    (platform5.body as Phaser.Physics.Arcade.Body).setAllowGravity(false).setImmovable(true);
+
+    // Pequeñas plataformas de conexión (para crear rutas)
+    const connector1 = this.physics.add.sprite(350, groundY - 30, "oakwoods-grass3").setOrigin(0.5, 1);
+    connector1.setDisplaySize(50, 8);
+    this.platforms.add(connector1);
+    (connector1.body as Phaser.Physics.Arcade.Body).setAllowGravity(false).setImmovable(true);
+
+    const connector2 = this.physics.add.sprite(550, groundY - 55, "oakwoods-grass1").setOrigin(0.5, 1);
+    connector2.setDisplaySize(55, 8);
+    this.platforms.add(connector2);
+    (connector2.body as Phaser.Physics.Arcade.Body).setAllowGravity(false).setImmovable(true);
+
+    const connector3 = this.physics.add.sprite(720, groundY - 85, "oakwoods-grass2").setOrigin(0.5, 1);
+    connector3.setDisplaySize(45, 8);
+    this.platforms.add(connector3);
+    (connector3.body as Phaser.Physics.Arcade.Body).setAllowGravity(false).setImmovable(true);
+
+    // Plataforma de inicio (para facilitar el acceso inicial)
+    const starterPlatform = this.physics.add.sprite(150, groundY - 25, "oakwoods-grass3").setOrigin(0.5, 1);
+    starterPlatform.setDisplaySize(70, 10);
+    this.platforms.add(starterPlatform);
+    (starterPlatform.body as Phaser.Physics.Arcade.Body).setAllowGravity(false).setImmovable(true);
   }
 
   private createAnimations(): void {
@@ -290,29 +357,41 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(): void {
-    // IA básica para los enemigos (persecución)
-    this.enemies.getChildren().forEach((enemyObj) => {
-      const e = enemyObj as Phaser.GameObjects.Rectangle;
-      if (e.active) {
-        const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, e.x, e.y);
-        
-        // Si el jugador está cerca (300px), el enemigo lo persigue
-        if (dist < 300) {
-          const angle = Phaser.Math.Angle.Between(e.x, e.y, this.player.x, this.player.y);
-          const speed = 60;
-          (e.body as Phaser.Physics.Arcade.Body).setVelocity(
-            Math.cos(angle) * speed,
-            Math.sin(angle) * speed
-          );
-        } else {
-          (e.body as Phaser.Physics.Arcade.Body).setVelocity(0, 0);
-        }
-      }
-    });
+    // Verificar si el juego ha terminado
+    if (this.gameLoopSystem.isGameEnded()) return;
 
-    // Update player and HUD
+    // Update player primero (prioridad máxima)
     this.player.update(this.cursors, this.dashKey, this.attackKey);
+    this.pachita.update();
+
+    // Actualizar sistemas (solo si no hay problemas)
+    try {
+      this.enemyAISystem.update();
+      this.debugSystem.update();
+      this.gameLoopSystem.update();
+    } catch (error) {
+      console.log("Error en sistemas:", error);
+    }
+
+    // Controles del jugador
+    if (Phaser.Input.Keyboard.JustDown(this.healKey)) {
+      this.progressionSystem.transferXpToLife();
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.transformKey)) {
+      this.pachita.transform();
+    }
+
+    // HUD always visible
     this.hud.update();
+
+    // Camera look (ligero hacia donde va)
+    const body = this.player.body as Phaser.Physics.Arcade.Body | undefined;
+    const vx = body?.velocity?.x ?? 0;
+    const lookX = Phaser.Math.Clamp((vx / 220) * 26, -34, 34);
+    this.cameras.main.setFollowOffset(lookX, 0);
+
+    // --- PARALLAX + INFINITE GROUND ---
 
     // === PARALLAX SCROLLING ===
     // Scroll background layers based on camera position

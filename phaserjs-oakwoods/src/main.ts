@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import { BootScene } from "./scenes/BootScene";
 import { GameScene } from "./scenes/GameScene";
+import { PauseScene } from "./scenes/PauseScene";
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.CANVAS,
@@ -21,7 +22,11 @@ const config: Phaser.Types.Core.GameConfig = {
       debug: false,
     },
   },
-  scene: [BootScene, GameScene],
+  scene: [
+    BootScene,
+    GameScene,
+    PauseScene
+  ],
 };
 
 new Phaser.Game(config);

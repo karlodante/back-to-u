@@ -2,6 +2,8 @@ import Phaser from "phaser";
 import { Dash } from "../systems/Dash";
 import { StateMachine } from "../core/StateMachine";
 import { EventBus } from "../core/EventBus";
+import { Pachita } from "./Pachita";
+import { AudioSystem } from "../core/AudioSystem";
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   public health: number = 100;
@@ -10,12 +12,41 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   
   public isDashing: boolean = false;
   public dashCooldown: number = 0;
+  public isHurt: boolean = false;
+  public hurtDurationMs: number = 150; // Reducido a 150ms para no bloquear tanto
+  public hurtStartMs: number = 0;
+  private hurtFlashCount: number = 0;
+  private isInvulnerable: boolean = false;
+  private invulnerableDurationMs: number = 1200; // 1.2 segundos de i-frames
   private dashSystem: Dash;
 
   private fsm: StateMachine = new StateMachine();
   private isDead: boolean = false;
-  private isInvulnerable: boolean = false;
   private invulnerabilityDuration: number = 1000;
+
+  // Game feel: "coyote time" + "jump buffer"
+  // update() no recibe dt, así que usamos contadores por frame.
+  private coyoteTimeFrames: number = 6;
+  private jumpBufferFrames: number = 6;
+  private coyoteCounter: number = 0;
+  private jumpBufferCounter: number = 0;
+
+  // Combate: cooldown real e "attack window" independiente de la animacion
+  public attackDamage: number = 20;
+  public attackKnockback: number = 220;
+  private playerLevel: number = 1;
+  private attackCooldownMs: number = 450;
+  private attackCooldownLeftMs: number = 0;
+  private attackStartMs: number = 0;
+  private attackWindowStartMs: number = 60; // dentro de la anim/acción
+  private attackWindowEndMs: number = 160;
+  private attackInstanceId: number = 0;
+
+  // Referencia a Pachita para bono de transformación
+  private pachita: Pachita | null = null;
+  
+  // Sistema de audio
+  private audioSystem: AudioSystem | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, "oakwoods-char-blue", 0);
@@ -29,7 +60,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.body?.setSize(20, 38);
     this.body?.setOffset(18, 16);
     this.setCollideWorldBounds(true);
-    this.body?.setBoundsRectangle(new Phaser.Geom.Rectangle(0, 0, 999999, 180));
 
     this.setupStateMachine();
 
@@ -39,6 +69,20 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
         this.fsm.change("idle");
       }
     });
+  }
+
+  /**
+   * Establece la referencia a Pachita para bonos de combate
+   */
+  public setPachita(pachita: Pachita): void {
+    this.pachita = pachita;
+  }
+
+  /**
+   * Establece el sistema de audio
+   */
+  public setAudioSystem(audioSystem: AudioSystem): void {
+    this.audioSystem = audioSystem;
   }
 
   private setupStateMachine() {
@@ -73,6 +117,33 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       }
     });
 
+    this.fsm.add({
+      name: "hurt",
+      enter: () => {
+        this.setVelocityX(0);
+        this.hurtStartMs = this.scene.time.now;
+        this.hurtFlashCount = 0;
+        // Animación de daño (flash)
+        this.startHurtFlash();
+      },
+      update: () => {
+        const now = this.scene.time.now;
+        const elapsed = now - this.hurtStartMs;
+        
+        // Salir del estado hurt después de la duración
+        if (elapsed >= this.hurtDurationMs) {
+          this.isHurt = false;
+          // Volver al estado apropiado
+          const body = this.body as Phaser.Physics.Arcade.Body;
+          if (body?.blocked.down) {
+            this.fsm.change("idle");
+          } else {
+            this.fsm.change("fall");
+          }
+        }
+      }
+    });
+
     this.fsm.change("idle");
   }
 
@@ -80,7 +151,33 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.isDead) return;
 
     const body = this.body as Phaser.Physics.Arcade.Body;
-    if (!body) return;
+    if (!body) {
+      console.error("❌ El cuerpo del jugador no existe");
+      return;
+    }
+
+    console.log("✅ Update del jugador ejecutándose");
+    console.log("Estado actual:", this.fsm.getCurrentStateName());
+    console.log("Velocidad actual:", body.velocity);
+
+    // Cooldown del ataque (ms reales)
+    if (this.attackCooldownLeftMs > 0) {
+      this.attackCooldownLeftMs -= 16.67;
+    }
+
+    // --- Jump feel helpers ---
+    const grounded = !!body.blocked.down;
+    if (grounded) {
+      this.coyoteCounter = this.coyoteTimeFrames;
+    } else {
+      this.coyoteCounter = Math.max(0, this.coyoteCounter - 1);
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(cursors.up)) {
+      this.jumpBufferCounter = this.jumpBufferFrames;
+    } else {
+      this.jumpBufferCounter = Math.max(0, this.jumpBufferCounter - 1);
+    }
 
     // Actualizar Cooldown del Dash
     this.dashSystem.update(this, 16.67);
@@ -88,16 +185,38 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     // Lógica de Dash (prioridad alta)
     if (Phaser.Input.Keyboard.JustDown(dashKey)) {
       this.dashSystem.tryDash(this, cursors.left.isDown ? -1 : (cursors.right.isDown ? 1 : 0));
+      
+      // Emitir sonido de dash
+      if (this.audioSystem) {
+        this.audioSystem.emitDashSound();
+      }
     }
 
     if (this.isDashing) return;
 
     // Lógica de Ataque
-    if (Phaser.Input.Keyboard.JustDown(attackKey) && body.blocked.down && this.fsm.getCurrentStateName() !== "attack") {
+    if (
+      Phaser.Input.Keyboard.JustDown(attackKey) &&
+      body.blocked.down &&
+      this.fsm.getCurrentStateName() !== "attack" &&
+      this.attackCooldownLeftMs <= 0
+    ) {
+      this.attackCooldownLeftMs = this.attackCooldownMs;
+      this.attackStartMs = this.scene.time.now;
+      this.attackInstanceId++;
       this.fsm.change("attack");
+      
+      // Emitir sonido de ataque
+      if (this.audioSystem) {
+        this.audioSystem.emitAttackSound();
+      }
     }
 
-    if (this.fsm.getCurrentStateName() === "attack") return;
+    if (this.fsm.getCurrentStateName() === "attack") {
+      // Seguimos actualizando cooldown/flags (pero no movemos al jugador).
+      this.fsm.update(16.67 / 1000);
+      return;
+    }
 
     // Movimiento Horizontal
     let dx = 0;
@@ -113,8 +232,15 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setVelocityX(dx * speed);
 
     // Salto
-    if (cursors.up.isDown && body.blocked.down) {
+    if (this.coyoteCounter > 0 && this.jumpBufferCounter > 0) {
       this.setVelocityY(-330);
+      this.coyoteCounter = 0;
+      this.jumpBufferCounter = 0;
+      
+      // Emitir sonido de salto
+      if (this.audioSystem) {
+        this.audioSystem.emitJumpSound();
+      }
     }
 
     // Transiciones de Estado basadas en Movimiento/Física
@@ -132,14 +258,54 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       }
     }
 
+    // No permitir movimiento durante el estado hurt (pero con más libertad)
+    if (this.isHurt) {
+      // Permitir 50% del movimiento normal durante hurt
+      const body = this.body as Phaser.Physics.Arcade.Body;
+      if (body) {
+        const currentVelX = body.velocity.x;
+        // Reducir velocidad pero permitir movimiento
+        if (Math.abs(currentVelX) > 0) {
+          this.setVelocityX(currentVelX * 0.5);
+        }
+      }
+    }
+
     this.fsm.update(16.67 / 1000);
+  }
+
+  /**
+   * Inicia el efecto de flash al recibir daño
+   */
+  private startHurtFlash(): void {
+    this.hurtFlashCount = 0;
+    this.hurtFlashLoop();
+  }
+
+  /**
+   * Loop del efecto de flash
+   */
+  private hurtFlashLoop(): void {
+    if (this.hurtFlashCount >= 6) {
+      this.setAlpha(1);
+      return;
+    }
+
+    this.setAlpha(this.hurtFlashCount % 2 === 0 ? 0.3 : 1);
+    this.hurtFlashCount++;
+    
+    this.scene.time.delayedCall(50, () => {
+      this.hurtFlashLoop();
+    });
   }
 
   public takeDamage(amount: number): void {
     if (this.isDead || this.isInvulnerable || this.isDashing) return;
 
+    EventBus.getInstance().emit("player_took_damage", { amount });
     this.health -= amount;
     EventBus.getInstance().emit("player_damage", this.health);
+    EventBus.getInstance().emit("screen_shake", { intensity: 0.02, duration: 120 });
     
     if (this.health <= 0) {
       this.health = 0;
@@ -147,24 +313,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       return;
     }
     
+    // Activar estado hurt
+    this.isHurt = true;
     this.isInvulnerable = true;
+    this.fsm.change("hurt");
     
-    this.scene.tweens.add({
-      targets: this,
-      alpha: 0.2,
-      duration: 100,
-      ease: "Linear",
-      repeat: 5,
-      yoyo: true,
-      onComplete: () => {
-        this.setAlpha(1);
-        this.isInvulnerable = false;
-      }
-    });
-
-    this.setTint(0xff0000);
-    this.scene.time.delayedCall(200, () => {
-      this.clearTint();
+    // Desactivar invulnerabilidad después del tiempo
+    this.scene.time.delayedCall(this.invulnerableDurationMs, () => {
+      this.isInvulnerable = false;
     });
   }
 
@@ -188,11 +344,65 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     return this.fsm.getCurrentStateName() === "attack";
   }
 
+  public isAttackWindow(): boolean {
+    if (this.fsm.getCurrentStateName() !== "attack") return false;
+    const now = this.scene.time.now;
+    return now >= this.attackStartMs + this.attackWindowStartMs && now <= this.attackStartMs + this.attackWindowEndMs;
+  }
+
+  public getAttackInstanceId(): number {
+    return this.attackInstanceId;
+  }
+
+  /**
+   * Obtiene el daño de ataque actual con bono de transformación
+   */
+  public getCurrentAttackDamage(): number {
+    let baseDamage = this.attackDamage;
+    
+    // Bono del 50% de daño extra cuando Pachita está transformada
+    if (this.pachita && this.pachita.isInTransformedMode()) {
+      baseDamage *= 1.5;
+    }
+    
+    return baseDamage;
+  }
+
+  public getLevel(): number {
+    return this.playerLevel;
+  }
+
+  /**
+   * Aplica escalado por nivel (placeholder para game jam).
+   * No rompe FSM ni movimiento.
+   */
+  public applyLevel(level: number): void {
+    const next = Math.max(1, Math.floor(level));
+    this.playerLevel = next;
+
+    const newMaxHealth = 100 + (next - 1) * 20;
+    const newAttackDamage = 20 + (next - 1) * 4;
+
+    this.maxHealth = newMaxHealth;
+    this.attackDamage = newAttackDamage;
+    this.health = Math.min(this.health, this.maxHealth);
+  }
+
   public getIsInvulnerable(): boolean {
     return this.isInvulnerable;
   }
 
   public getDashCooldownProgress(): number {
     return Math.max(0, this.dashCooldown / this.dashSystem.cooldownTime);
+  }
+
+  // Curación usada por la mecánica de Pachita (mascota).
+  public heal(amount: number): void {
+    if (this.isDead) return;
+    const before = this.health;
+    this.health = Math.min(this.maxHealth, this.health + amount);
+    if (this.health !== before) {
+      EventBus.getInstance().emit("player_heal", this.health);
+    }
   }
 }
