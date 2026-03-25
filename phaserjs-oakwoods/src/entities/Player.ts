@@ -49,7 +49,22 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   private audioSystem: AudioSystem | null = null;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, "oakwoods-char-blue", 0);
+    // Detectar si usar sprites personalizados o spritesheet original
+    const useCustomSprites = scene.textures.exists('wara_idle');
+    const spriteKey = useCustomSprites ? 'wara_idle' : 'oakwoods-char-blue';
+    console.log(`🎮 DEBUG: Player usando spriteKey: ${spriteKey} (custom: ${useCustomSprites})`);
+    
+    // Crear sprite con el sistema apropiado
+    if (useCustomSprites) {
+      // Usar imagen individual de Wara (sin frame number)
+      super(scene, x, y, spriteKey);
+      console.log("🔧 DEBUG: Player creado con imagen individual Wara");
+      this.setScale(1.5); // Ajustar tamaño de Wara
+    } else {
+      // Usar spritesheet original (con frame number)
+      super(scene, x, y, spriteKey, 0);
+      console.log("🔧 DEBUG: Player creado con spritesheet original");
+    }
     
     this.dashSystem = new Dash();
     
@@ -61,12 +76,16 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.body?.setOffset(18, 16);
     this.setCollideWorldBounds(true);
 
+    console.log("🏗️ DEBUG: Player constructor completado");
     this.setupStateMachine();
 
     // Reset attack state when animation finishes
     this.on("animationcomplete", (anim: any) => {
-      if (anim.key === "char-blue-attack") {
-        this.fsm.change("idle");
+      if (!useCustomSprites) {
+        // Solo para spritesheet original
+        if (anim.key === "char-blue-attack") {
+          this.fsm.change("idle");
+        }
       }
     });
   }
@@ -85,46 +104,79 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.audioSystem = audioSystem;
   }
 
-  private setupStateMachine() {
+  private setupStateMachine(): void {
+    const useCustomSprites = this.scene.textures.exists('wara_idle');
+    
     this.fsm.add({
       name: "idle",
-      enter: () => this.anims.play("char-blue-idle", true),
-      update: () => {
-        // Al update del jugador se le pasan cursors, etc. pero la FSM update dt
+      enter: () => {
+        if (useCustomSprites) {
+          this.setTexture('wara_idle'); // Cambiar textura directamente
+        } else {
+          this.anims.play("char-blue-idle", true); // Usar animación del spritesheet
+        }
       }
     });
 
     this.fsm.add({
       name: "run",
-      enter: () => this.anims.play("char-blue-run", true)
+      enter: () => {
+        if (useCustomSprites) {
+          this.setTexture('wara_run'); // Cambiar textura directamente
+        } else {
+          this.anims.play("char-blue-run", true);
+        }
+      }
     });
 
     this.fsm.add({
       name: "jump",
-      enter: () => this.anims.play("char-blue-jump", true)
+      enter: () => {
+        if (useCustomSprites) {
+          this.setTexture('wara_jump'); // Cambiar textura directamente
+        } else {
+          this.anims.play("char-blue-jump", true);
+        }
+      }
     });
 
     this.fsm.add({
       name: "fall",
-      enter: () => this.anims.play("char-blue-fall", true)
+      enter: () => {
+        if (useCustomSprites) {
+          this.setTexture('wara_jump'); // Usar jump para fall también
+        } else {
+          this.anims.play("char-blue-fall", true);
+        }
+      }
     });
 
     this.fsm.add({
       name: "attack",
       enter: () => {
         this.setVelocityX(0);
-        this.anims.play("char-blue-attack", true);
+        if (useCustomSprites) {
+          this.setTexture('wara_attack'); // Cambiar textura directamente
+          // Volver a idle después de un tiempo
+          this.scene.time.delayedCall(500, () => {
+            if (this.fsm.getCurrentStateName() === "attack") {
+              this.fsm.change("idle");
+            }
+          });
+        } else {
+          this.anims.play("char-blue-attack", true);
+        }
       }
     });
 
     this.fsm.add({
       name: "hurt",
       enter: () => {
-        this.setVelocityX(0);
-        this.hurtStartMs = this.scene.time.now;
-        this.hurtFlashCount = 0;
-        // Animación de daño (flash)
-        this.startHurtFlash();
+        if (useCustomSprites) {
+          this.setTexture('wara_idle'); // Usar idle para hurt
+        } else {
+          this.anims.play("char-blue-hurt", true);
+        }
       },
       update: () => {
         const now = this.scene.time.now;

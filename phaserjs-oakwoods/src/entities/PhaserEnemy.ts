@@ -75,8 +75,11 @@ const ENEMY_CONFIGS: Record<EnemyKind, EnemyConfig> = {
 export class PhaserEnemy {
   public readonly id: string;
   public readonly kind: EnemyKind;
-  public readonly sprite: Phaser.GameObjects.Rectangle;
+  public sprite: Phaser.Types.Physics.Arcade.SpriteWithDynamicBody | Phaser.GameObjects.Rectangle;
   private readonly body: Phaser.Physics.Arcade.Body | null;
+  
+  // Tipo de enemigo para sprites
+  private enemyType: 'alma' | 'sirviente';
 
   public hp: number;
   public maxHp: number;
@@ -103,8 +106,43 @@ export class PhaserEnemy {
 
     const cfg = ENEMY_CONFIGS[kind];
 
-    this.sprite = this.scene.add.rectangle(x, y, cfg.size, cfg.size, cfg.color, 0.95);
-    this.scene.physics.add.existing(this.sprite);
+    // Determinar tipo de enemigo según kind
+    this.enemyType = 'alma'; // Default
+    if (kind === 'melee' || kind === 'ranged') {
+      this.enemyType = 'alma'; // Alma en pena para melee y ranged
+    } else {
+      this.enemyType = 'sirviente'; // Sirvientes para tank
+    }
+
+    console.log(`👾 DEBUG: Creando enemigo ${kind} como ${this.enemyType}`);
+
+    // Crear sprite según tipo
+    if (this.enemyType === 'alma') {
+      // Alma en pena
+      if (scene.textures.exists('alma_idle')) {
+        this.sprite = scene.physics.add.sprite(x, y, 'alma_idle');
+        this.sprite.setDisplaySize(cfg.size, cfg.size);
+        this.sprite.setOrigin(0.5);
+        console.log("🔧 DEBUG: Alma en pena creada con sprite");
+      } else {
+        console.log("⚠️ DEBUG: Alma sprites no encontrados, usando rectángulo");
+        this.sprite = this.scene.add.rectangle(x, y, cfg.size, cfg.size, cfg.color, 0.95);
+        this.scene.physics.add.existing(this.sprite);
+      }
+    } else {
+      // Sirviente
+      if (scene.textures.exists('sirviente_idle')) {
+        this.sprite = scene.physics.add.sprite(x, y, 'sirviente_idle');
+        this.sprite.setDisplaySize(cfg.size, cfg.size);
+        this.sprite.setOrigin(0.5);
+        console.log("🔧 DEBUG: Sirviente creado con sprite");
+      } else {
+        console.log("⚠️ DEBUG: Sirviente sprites no encontrados, usando rectángulo");
+        this.sprite = this.scene.add.rectangle(x, y, cfg.size, cfg.size, cfg.color, 0.95);
+        this.scene.physics.add.existing(this.sprite);
+      }
+    }
+    
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(false);
     body.setImmovable(false); // nos movemos con setVelocity
@@ -360,7 +398,14 @@ export class PhaserEnemy {
     const cfg = ENEMY_CONFIGS[this.kind];
 
     this.setVelocity(0, 0);
-    this.sprite.setFillStyle(0x000000, 0.5);
+    // Aplicar efecto de muerte solo si es un rectángulo (fallback)
+    if (this.sprite instanceof Phaser.GameObjects.Rectangle) {
+      this.sprite.setFillStyle(0x000000, 0.5);
+    } else {
+      // Para sprite personalizado, usar tint o alpha
+      this.sprite.setTint(0x000000);
+      this.sprite.setAlpha(0.5);
+    }
 
     // Separar "evento de muerte" de "destrucción": destruimos después de un pequeño tween.
     this.scene.tweens.add({

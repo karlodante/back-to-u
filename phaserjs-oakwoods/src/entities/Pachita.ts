@@ -28,7 +28,7 @@ export class Pachita {
   private transformCooldownMs: number = 15000; // 15 segundos de cooldown
   private lastTransformMs: number = 0;
 
-  private sprite: Phaser.GameObjects.Arc;
+  private sprite: Phaser.GameObjects.Image | Phaser.GameObjects.Arc;
   private player: Player;
   private scene: Phaser.Scene;
 
@@ -47,10 +47,14 @@ export class Pachita {
     this.scene = scene;
     this.player = player;
 
-    // Placeholder: un círculo amarillo con borde.
+    // Pachita sigue usando su sprite original (círculo amarillo)
+    console.log("🐱 DEBUG: Pachita usando sprite original (círculo amarillo)");
+    
+    // Sprite original de Pachita
     this.sprite = this.scene.add
       .circle(player.x + this.offsetX, player.y + this.offsetY, 6, 0xffd34d, 1)
       .setStrokeStyle(2, 0x3a2a00, 1);
+    
     this.sprite.setDepth(10);
   }
 
@@ -107,16 +111,47 @@ export class Pachita {
   }
 
   private updateAppearance(): void {
-    if (this.isTransformed) {
-      // Modo transformado: más grande, color rojo/naranja
-      this.sprite.setRadius(10);
-      this.sprite.setFillStyle(0xff6b35, 1);
-      this.sprite.setStrokeStyle(3, 0xff0000, 1);
-    } else {
-      // Modo normal
-      this.sprite.setRadius(6);
-      this.sprite.setFillStyle(0xffd34d, 1);
-      this.sprite.setStrokeStyle(2, 0x3a2a00, 1);
+    if (this.sprite instanceof Phaser.GameObjects.Arc) {
+      // Solo si es un círculo (fallback)
+      if (this.isTransformed) {
+        // Modo transformado: más grande, color rojo/naranja
+        this.sprite.setRadius(10);
+        this.sprite.setFillStyle(0xff6b35, 1);
+        this.sprite.setStrokeStyle(3, 0xff0000, 1);
+      } else {
+        // Modo normal
+        this.sprite.setRadius(6);
+        this.sprite.setFillStyle(0xffd34d, 1);
+        this.sprite.setStrokeStyle(2, 0x3a2a00, 1);
+      }
+    } else if (this.sprite instanceof Phaser.GameObjects.Image) {
+      // Para sprite Abby, usar diferentes sprites según estado
+      if (!this.scene.textures.exists('abby_idle')) return;
+      
+      let targetSprite = 'abby_idle'; // Default
+      
+      if (this.isTransformed) {
+        // Modo transformado: usar sprite de ataque
+        targetSprite = 'abby_run'; // Usar run como "transformado"
+      } else {
+        // Modo normal: usar idle o walk según movimiento
+        const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
+        const isMoving = Math.abs(playerBody.velocity.x) > 10;
+        targetSprite = isMoving ? 'abby_walk' : 'abby_idle';
+      }
+      
+      // Solo cambiar si es diferente
+      if (this.sprite.texture.key !== targetSprite) {
+        console.log(`🎭 DEBUG: Cambiando sprite Abby: ${this.sprite.texture.key} → ${targetSprite}`);
+        this.sprite.setTexture(targetSprite);
+      }
+      
+      // Ajustar tamaño según transformación
+      if (this.isTransformed) {
+        this.sprite.setDisplaySize(20, 20); // Más grande
+      } else {
+        this.sprite.setDisplaySize(12, 12); // Normal
+      }
     }
   }
 

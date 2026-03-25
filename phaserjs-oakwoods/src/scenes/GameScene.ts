@@ -195,11 +195,41 @@ export class GameScene extends Phaser.Scene {
 
     // Tecla ESC para pausar
     this.input.keyboard!.on("keydown-ESC", () => {
-      this.scene.pause();
-      this.scene.launch("PauseScene");
+      // Verificar si la escena está activa antes de pausar
+      if (this.scene.isActive()) {
+        this.scene.pause();
+        this.scene.launch("PauseScene");
+      } else {
+        console.log("⚠️ DEBUG: GameScene no está activa, no se puede pausar");
+      }
     });
 
     console.log("✅ Input configurado correctamente");
+
+    // === VALIDACIÓN DE CARGA DE SPRITES KARLO ===
+    // Solo verificar que los sprites cargaron, sin mostrar pruebas visuales
+    console.log("🔍 DEBUG: Verificando carga de sprites...");
+    
+    if (this.textures.exists('wara_idle')) {
+      console.log("✅ DEBUG: Sprite Wara (player) cargado correctamente");
+    } else {
+      console.log("⚠️ DEBUG: Sprite Wara (player) no encontrado, usando fallback");
+    }
+
+    if (this.textures.exists('alma_idle')) {
+      console.log("✅ DEBUG: Sprite Alma (enemigo) cargado correctamente");
+    } else {
+      console.log("⚠️ DEBUG: Sprite Alma (enemigo) no encontrado, usando fallback");
+    }
+
+    if (this.textures.exists('sirviente_idle')) {
+      console.log("✅ DEBUG: Sprite Sirviente (enemigo) cargado correctamente");
+    } else {
+      console.log("⚠️ DEBUG: Sprite Sirviente (enemigo) no encontrado, usando fallback");
+    }
+
+    // Pachita usa su sprite original (círculo amarillo)
+    console.log("✅ DEBUG: Pachita usando sprite original (círculo amarillo)");
 
     // === HUD ===
     this.hud = new HUD(this, this.player, this.pachita);
@@ -303,57 +333,81 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createAnimations(): void {
-    if (this.anims.exists("char-blue-idle")) return;
+    console.log("🔍 DEBUG: Creando animaciones...");
+    
+    // SOLO crear animaciones del spritesheet original (para fallback)
+    if (this.anims.exists("char-blue-idle")) {
+      console.log("📦 DEBUG: Animaciones originales ya existen");
+    } else {
+      console.log("📦 DEBUG: Creando animaciones con spritesheet oakwoods");
+      
+      this.anims.create({
+        key: "char-blue-idle",
+        frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
+          start: 0,
+          end: 5,
+        }),
+        frameRate: 8,
+        repeat: -1,
+      });
 
-    this.anims.create({
-      key: "char-blue-idle",
-      frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
-        start: 0,
-        end: 5,
-      }),
-      frameRate: 8,
-      repeat: -1,
-    });
+      this.anims.create({
+        key: "char-blue-run",
+        frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
+          start: 16,
+          end: 21,
+        }),
+        frameRate: 10,
+        repeat: -1,
+      });
 
-    this.anims.create({
-      key: "char-blue-run",
-      frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
-        start: 16,
-        end: 21,
-      }),
-      frameRate: 10,
-      repeat: -1,
-    });
+      this.anims.create({
+        key: "char-blue-jump",
+        frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
+          start: 28,
+          end: 31,
+        }),
+        frameRate: 10,
+        repeat: 0,
+      });
 
-    this.anims.create({
-      key: "char-blue-jump",
-      frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
-        start: 28,
-        end: 31,
-      }),
-      frameRate: 10,
-      repeat: 0,
-    });
+      this.anims.create({
+        key: "char-blue-fall",
+        frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
+          start: 35,
+          end: 37,
+        }),
+        frameRate: 10,
+        repeat: 0,
+      });
 
-    this.anims.create({
-      key: "char-blue-fall",
-      frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
-        start: 35,
-        end: 37,
-      }),
-      frameRate: 10,
-      repeat: 0,
-    });
+      this.anims.create({
+        key: "char-blue-attack",
+        frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
+          start: 8,
+          end: 13,
+        }),
+        frameRate: 12,
+        repeat: 0,
+      });
 
-    this.anims.create({
-      key: "char-blue-attack",
-      frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
-        start: 8,
-        end: 13,
-      }),
-      frameRate: 12,
-      repeat: 0,
-    });
+      this.anims.create({
+        key: "char-blue-hurt",
+        frames: this.anims.generateFrameNumbers("oakwoods-char-blue", {
+          start: 42,
+          end: 45,
+        }),
+        frameRate: 12,
+        repeat: 0,
+      });
+
+      console.log("✅ DEBUG: Animaciones del spritesheet creadas correctamente");
+    }
+
+    // Ya no creamos animaciones de Wara porque usamos imágenes individuales
+    if (this.textures.exists('wara_idle')) {
+      console.log("🎨 DEBUG: Wara usa imágenes individuales (no se crean animaciones)");
+    }
   }
 
   update(): void {

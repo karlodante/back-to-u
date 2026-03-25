@@ -103,8 +103,51 @@ export class BootScene extends Phaser.Scene {
     const tileset = manifest.tilesets.main;
     this.load.image(tileset.key, `${basePath}/${tileset.path}`);
 
-    // Store manifest in registry for other scenes
-    this.registry.set("oakwoods-manifest", manifest);
+    // === SPRITES PERSONALIZADOS KARLO - NOMBRES EXACTOS ===
+    console.log("🔍 DEBUG: Cargando sprites con nombres exactos...");
+    
+    // Wara - Cargar como imágenes individuales (no spritesheets)
+    console.log("🔍 DEBUG: Cargando sprites individuales de Wara...");
+    
+    this.load.image('wara_idle', 'assets_karlo/Wara REPOSO PNG.png');
+    this.load.image('wara_walk', 'assets_karlo/Wara CAMINATA PNG.png');
+    this.load.image('wara_run', 'assets_karlo/Wara CORRER PNG.png');
+    this.load.image('wara_jump', 'assets_karlo/Wara SALTO PNG.png');
+    this.load.image('wara_attack', 'assets_karlo/Wara ATACANDO PNG.png');
+    this.load.image('wara_air_attack', 'assets_karlo/Wara ATACANDO EN EL AIRE PNG.png');
+
+    // Enemigos - Alma en pena (cargar como imágenes individuales)
+    this.load.image('alma_idle', 'assets_karlo/Alma en pena reposo.png');
+    this.load.image('alma_angry', 'assets_karlo/Alma en pena enojada reposo.png');
+    this.load.image('alma_very_angry', 'assets_karlo/Alma en pena más enojada reposot.png');
+    this.load.image('alma_death', 'assets_karlo/Alma en pena muerte.png');
+    this.load.image('alma_angry_death', 'assets_karlo/Alma en pena más enojada muerte.png');
+
+    // Enemigos - Sirviente (cargar como imágenes individuales)
+    this.load.image('sirviente_idle', 'assets_karlo/Sirviente Pirichuchio aleteot.png');
+    this.load.image('sirviente_attack', 'assets_karlo/Sirviente Golpecito.png');
+    console.log("📦 DEBUG: Cargando Sirviente Golpecito.png → sirviente_attack");
+    
+    this.load.image('sirviente_death', 'assets_karlo/MUERTE sirviente Pirichuchio.png');
+    console.log("📦 DEBUG: Cargando MUERTE sirviente Pirichuchio.png → sirviente_death");
+
+    // PACHITA (usando Abby como alternativa)
+    this.load.image('abby_idle', 'assets_karlo/Abby REPOSO PNG.png');
+    console.log("📦 DEBUG: Cargando Abby REPOSO PNG.png → abby_idle");
+    
+    this.load.image('abby_walk', 'assets_karlo/Abby CAMINATA PNG.png');
+    console.log("📦 DEBUG: Cargando Abby CAMINATA PNG.png → abby_walk");
+    
+    this.load.image('abby_run', 'assets_karlo/Abby CORRER PNG.png');
+    console.log("📦 DEBUG: Cargando Abby CORRER PNG.png → abby_run");
+    
+    this.load.image('abby_jump', 'assets_karlo/Abby SALTO PNG.png');
+    console.log("📦 DEBUG: Cargando Abby SALTO PNG.png → abby_jump");
+    
+    // Decoración adicional
+    this.load.image('grass_tiles', 'assets_karlo/Cuadros pasto PNG.png');
+
+    console.log("✅ DEBUG: Todos los assets_karlo configurados para cargar");
 
     // Start loading and transition to GameScene when complete
     this.load.once("complete", () => {
