@@ -118,37 +118,90 @@ export class PhaserEnemy {
 
     // Crear sprite según tipo
     if (this.enemyType === 'alma') {
-      // Alma en pena
-      if (scene.textures.exists('alma_idle')) {
-        this.sprite = scene.physics.add.sprite(x, y, 'alma_idle');
-        this.sprite.setDisplaySize(cfg.size, cfg.size);
+      // Alma en pena - verificar si tenemos sprites de alma enojada
+      if (scene.textures.exists('alma_angry_idle')) {
+        this.sprite = scene.physics.add.sprite(x, y, 'alma_angry_idle', 0);
         this.sprite.setOrigin(0.5);
-        console.log("🔧 DEBUG: Alma en pena creada con sprite");
+        this.sprite.setScale(1); // ESCALA NORMAL - no gigantes
+        
+        // CRÍTICO: Guardar referencia al enemigo en el sprite
+        (this.sprite as any).enemyInstance = this;
+        
+        // Reproducir animación idle automáticamente
+        if (!(this.sprite instanceof Phaser.GameObjects.Rectangle)) {
+          // Verificar si la animación existe antes de reproducirla
+          if (scene.anims.exists('alma_angry_idle_anim')) {
+            (this.sprite as Phaser.GameObjects.Sprite).play('alma_angry_idle_anim', true);
+            console.log("🔧 DEBUG: Alma enojada creada con animación idle");
+          } else {
+            console.log("⚠️ DEBUG: Animación alma_angry_idle_anim no existe, usando sprite estático");
+          }
+        }
+        console.log("🔧 DEBUG: Alma enojada creada con escala 1 (tamaño regular)");
+      } else if (scene.textures.exists('alma_idle')) {
+        // Fallback a alma normal
+        this.sprite = scene.physics.add.sprite(x, y, 'alma_idle', 0);
+        this.sprite.setOrigin(0.5);
+        this.sprite.setScale(1); // ESCALA NORMAL
+        
+        // CRÍTICO: Guardar referencia al enemigo en el sprite
+        (this.sprite as any).enemyInstance = this;
+        
+        // Reproducir animación idle normal
+        if (!(this.sprite instanceof Phaser.GameObjects.Rectangle)) {
+          if (scene.anims.exists('alma_idle_anim')) {
+            (this.sprite as Phaser.GameObjects.Sprite).play('alma_idle_anim', true);
+            console.log("🔧 DEBUG: Alma normal creada con animación idle");
+          } else {
+            console.log("⚠️ DEBUG: Animación alma_idle_anim no existe, usando sprite estático");
+          }
+        }
+        console.log("🔧 DEBUG: Alma normal creada con escala 1 (tamaño regular)");
       } else {
         console.log("⚠️ DEBUG: Alma sprites no encontrados, usando rectángulo");
         this.sprite = this.scene.add.rectangle(x, y, cfg.size, cfg.size, cfg.color, 0.95);
         this.scene.physics.add.existing(this.sprite);
+        // CRÍTICO: Guardar referencia al enemigo en el sprite
+        (this.sprite as any).enemyInstance = this;
       }
     } else {
       // Sirviente
       if (scene.textures.exists('sirviente_idle')) {
-        this.sprite = scene.physics.add.sprite(x, y, 'sirviente_idle');
-        this.sprite.setDisplaySize(cfg.size, cfg.size);
+        this.sprite = scene.physics.add.sprite(x, y, 'sirviente_idle', 0);
         this.sprite.setOrigin(0.5);
-        console.log("🔧 DEBUG: Sirviente creado con sprite");
+        this.sprite.setScale(1); // ESCALA NORMAL
+        // CRÍTICO: Guardar referencia al enemigo en el sprite
+        (this.sprite as any).enemyInstance = this;
+        console.log("🔧 DEBUG: Sirviente creado con escala 1 (tamaño regular)");
       } else {
         console.log("⚠️ DEBUG: Sirviente sprites no encontrados, usando rectángulo");
         this.sprite = this.scene.add.rectangle(x, y, cfg.size, cfg.size, cfg.color, 0.95);
         this.scene.physics.add.existing(this.sprite);
+        // CRÍTICO: Guardar referencia al enemigo en el sprite
+        (this.sprite as any).enemyInstance = this;
       }
     }
     
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
-    body.setAllowGravity(false);
+    
+    // ALMAS: Configurar para que floten pero no atraviesen suelo
+    if (this.enemyType === 'alma') {
+      body.setAllowGravity(false); // Almas flotan
+      body.setVelocityY(0); // Movimiento vertical controlado
+      body.setBounce(0); // Sin rebote
+      
+      // HITBOX AJUSTADO para escala 1 (48x48 real)
+      body.setSize(48, 48); // Medidas reales del frame
+      body.setOffset(0, 0); // Sin offset para que cubra todo
+      
+      console.log("👻 DEBUG: Alma configurada para flotar con hitbox 48x48 (escala 1)");
+    } else {
+      body.setAllowGravity(true); // Otros enemigos con gravedad
+      console.log("⚔️ DEBUG: Enemigo configurado con gravedad");
+    }
+    
     body.setImmovable(false); // nos movemos con setVelocity
     body.setDamping(true);
-    body.setDrag(0.2, 0.2);
-    body.setSize(cfg.size * 0.9, cfg.size * 0.9, true);
 
     this.body = this.sprite.body as Phaser.Physics.Arcade.Body;
 
@@ -371,9 +424,15 @@ export class PhaserEnemy {
   }
 
   public takeDamage(amount: number, attackerX: number, attackerY: number, knockbackForce: number): void {
-    if (this.isDead || this.destroyed) return;
+    if (this.isDead || this.destroyed) {
+      console.log("🛡️ DEBUG: Enemigo ya está muerto o destruido, ignorando daño");
+      return;
+    }
 
+    console.log(`💔 DEBUG: Enemigo recibiendo ${amount} de daño, HP actual: ${this.hp}/${this.maxHp}`);
+    
     this.hp = Math.max(0, this.hp - amount);
+    console.log(`💔 DEBUG: HP del enemigo después del daño: ${this.hp}/${this.maxHp}`);
 
     // Shake al recibir daño del enemigo
     EventBus.getInstance().emit("screen_shake", { intensity: 0.02, duration: 90 });
@@ -387,6 +446,7 @@ export class PhaserEnemy {
     this.setVelocity(dirX * knockbackForce, dirY * knockbackForce);
 
     if (this.hp <= 0) {
+      console.log("💀 DEBUG: HP del enemigo llegó a 0, iniciando muerte");
       this.die();
     }
   }
@@ -395,9 +455,80 @@ export class PhaserEnemy {
     if (this.isDead) return;
     this.isDead = true;
 
-    const cfg = ENEMY_CONFIGS[this.kind];
+    console.log("💀 DEBUG: Enemigo muriendo, iniciando secuencia de muerte");
 
+    // Detener movimiento inmediatamente
     this.setVelocity(0, 0);
+    
+    // Desactivar física para evitar más colisiones
+    const body = this.sprite.body as Phaser.Physics.Arcade.Body;
+    if (body) {
+      body.enable = false;
+      console.log("🛡️ DEBUG: Cuerpo físico del enemigo desactivado");
+    }
+
+    // CRÍTICO: Ejecutar animación de muerte inmediatamente
+    if (this.enemyType === 'alma') {
+      // Intentar usar animación de alma enojada primero
+      if (this.scene.anims.exists('alma_angry_death_anim') && this.scene.textures.exists('alma_angry_death')) {
+        console.log("💀 DEBUG: Reproduciendo animación de muerte para alma enojada");
+        
+        if (!(this.sprite instanceof Phaser.GameObjects.Rectangle)) {
+          // Detener cualquier animación actual
+          (this.sprite as Phaser.GameObjects.Sprite).stop();
+          
+          // Cambiar a spritesheet de muerte si es necesario
+          (this.sprite as Phaser.GameObjects.Sprite).setTexture('alma_angry_death', 0);
+          
+          // CRÍTICO: Ejecutar animación de muerte
+          (this.sprite as Phaser.GameObjects.Sprite).play('alma_angry_death_anim');
+          
+          // Usar evento animationcomplete para destruir SOLO cuando termine
+          (this.sprite as Phaser.GameObjects.Sprite).once('animationcomplete', () => {
+            console.log("💀 DEBUG: Animación de muerte completada, destruyendo enemigo");
+            this.destroyEnemy(); // Usar destroyEnemy en lugar de destroy
+          });
+        } else {
+          console.log("💀 DEBUG: Enemigo es rectángulo, destruyendo inmediatamente");
+          this.destroyEnemy();
+        }
+      }
+      // Fallback a animación de alma normal
+      else if (this.scene.anims.exists('alma_death_anim') && this.scene.textures.exists('alma_death')) {
+        console.log("💀 DEBUG: Reproduciendo animación de muerte para alma normal");
+        
+        if (!(this.sprite instanceof Phaser.GameObjects.Rectangle)) {
+          (this.sprite as Phaser.GameObjects.Sprite).stop();
+          (this.sprite as Phaser.GameObjects.Sprite).setTexture('alma_death', 0);
+          (this.sprite as Phaser.GameObjects.Sprite).play('alma_death_anim');
+          
+          (this.sprite as Phaser.GameObjects.Sprite).once('animationcomplete', () => {
+            console.log("💀 DEBUG: Animación de muerte normal completada, destruyendo enemigo");
+            this.destroyEnemy(); // Usar destroyEnemy en lugar de destroy
+          });
+        } else {
+          this.destroyEnemy();
+        }
+      } else {
+        console.log("💀 DEBUG: No hay animación de muerte disponible, usando fallback");
+        this.useDeathFallback();
+      }
+    } else {
+      console.log("💀 DEBUG: Enemigo no es alma, usando fallback");
+      this.useDeathFallback();
+    }
+
+    // Emitir XP inmediatamente
+    EventBus.getInstance().emit("enemy_defeated", {
+      enemyId: this.id,
+      xp: this.xpReward,
+    });
+  }
+
+  private useDeathFallback(): void {
+    // Fallback para otros enemigos o si no hay animación
+    console.log("💀 DEBUG: Usando muerte fallback para enemigo");
+    
     // Aplicar efecto de muerte solo si es un rectángulo (fallback)
     if (this.sprite instanceof Phaser.GameObjects.Rectangle) {
       this.sprite.setFillStyle(0x000000, 0.5);
@@ -407,23 +538,32 @@ export class PhaserEnemy {
       this.sprite.setAlpha(0.5);
     }
 
-    // Separar "evento de muerte" de "destrucción": destruimos después de un pequeño tween.
+    // Destruir después de un pequeño tween
     this.scene.tweens.add({
       targets: this.sprite,
       alpha: 0,
       duration: 160,
       onComplete: () => {
-        if (this.destroyed) return;
-        this.destroyed = true;
-        this.sprite.destroy();
+        this.destroyEnemy();
       },
     });
 
-    // Emite XP solo una vez (una muerte real).
+    // Emitir XP inmediatamente (no esperar a la destrucción)
     EventBus.getInstance().emit("enemy_defeated", {
       enemyId: this.id,
       xp: this.xpReward,
     });
+  }
+
+  private destroyEnemy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    
+    // Limpiar eventos antes de destruir
+    this.sprite.removeAllListeners();
+    this.sprite.destroy();
+    
+    console.log("💀 DEBUG: Enemigo destruido completamente");
   }
 
   public update(): void {

@@ -44,6 +44,10 @@ export class GameScene extends Phaser.Scene {
   private debugSystem!: DebugSystem;
   private audioSystem!: AudioSystem;
 
+  // Cooldown para evitar congelamiento por múltiples interacciones
+  private lastCombatTime: number = 0;
+  private combatCooldownMs: number = 50; // Reducido a 50ms para mejor respuesta
+
   // Inicializar sistemas centralizados
   private initializeSystems(): void {
     try {
@@ -158,13 +162,80 @@ export class GameScene extends Phaser.Scene {
     this.add.image(380, groundY, "oakwoods-grass2").setOrigin(0.5, 1);
     this.add.image(450, groundY, "oakwoods-grass3").setOrigin(0.5, 1);
 
+    // === PRUEBA CONTROLADA - DEBUG REAL ===
+    // Probar si wara_idle se puede renderizar correctamente como SPRITESHEET
+    console.log("🧪 DEBUG: Iniciando prueba controlada de Wara (SPRITESHEET)...");
+    
+    if (this.textures.exists('wara_idle')) {
+      console.log("✅ DEBUG: Textura wara_idle existe");
+      
+      // PRUEBA 1: Sprite estático con frame 0 del spritesheet
+      const testSprite = this.physics.add.sprite(400, 300, 'wara_idle', 0);
+      testSprite.setOrigin(0.5, 1);
+      testSprite.setDepth(10);
+      testSprite.setScale(1.5);
+      testSprite.setImmovable(true);
+      testSprite.body?.setAllowGravity(false);
+      console.log("🧪 DEBUG: Sprite de prueba creado en (400, 300) con frame 0");
+      
+      // PRUEBA 2: Verificar propiedades
+      console.log("🧪 DEBUG: Propiedades del sprite de prueba:");
+      console.log(`  - key: ${testSprite.texture.key}`);
+      console.log(`  - frame: ${testSprite.frame.name}`);
+      console.log(`  - visible: ${testSprite.visible}`);
+      console.log(`  - alpha: ${testSprite.alpha}`);
+      console.log(`  - scale: ${testSprite.scaleX}`);
+      
+      // PRUEBA 3: Intentar reproducir animación
+      if (this.anims.exists('wara_idle_anim')) {
+        console.log("🧪 DEBUG: Animación wara_idle_anim existe, probando...");
+        setTimeout(() => {
+          testSprite.play('wara_idle_anim', true);
+          console.log("🧪 DEBUG: Reproduciendo animación wara_idle_anim");
+        }, 1000);
+      } else {
+        console.log("❌ DEBUG: Animación wara_idle_anim NO existe");
+      }
+      
+      // Eliminar después de 5 segundos para no interferir
+      this.time.delayedCall(5000, () => {
+        testSprite.destroy();
+        console.log("🧪 DEBUG: Sprite de prueba eliminado");
+      });
+      
+    } else {
+      console.log("❌ DEBUG: Textura wara_idle NO existe");
+    }
+
     // === PLAYER CHARACTER ===
     // Create custom player instance
-    this.player = new Player(this, 100, 120);
+    console.log("🎮 DEBUG: Creando Player único...");
+    // Coordenada exacta del suelo: 184 (groundY) - altura del sprite
+    this.player = new Player(this, 100, 184); // Exactamente en la coordenada del suelo
     this.pachita = new Pachita(this, this.player);
     
     // Conectar Pachita con Player para bonos de combate
     this.player.setPachita(this.pachita);
+
+    // Verificar que solo exista un Player
+    const playerCount = this.children.list.filter(child => child instanceof Player).length;
+    console.log(`🔍 DEBUG: Número de Players en escena: ${playerCount}`);
+    if (playerCount > 1) {
+      console.warn("⚠️ ADVERTENCIA: Múltiples Players detectados");
+    }
+
+    // === ENEMY SPAWN SYSTEM (PREPARACIÓN) ===
+    // Estructura para futuras probabilidades de spawn
+    const enemyTypes = [
+      { type: 'alma_angry', weight: 0.6, spriteKey: 'alma_angry_idle' },
+      { type: 'alma_normal', weight: 0.4, spriteKey: 'alma_idle' }
+    ];
+    
+    console.log("🎲 DEBUG: Sistema de probabilidades de spawn preparado");
+    console.log(`🎲 DEBUG: Tipos de enemigos disponibles: ${enemyTypes.length}`);
+    
+    // NOTA: Esto es preparación para futura implementación
+    // El sistema actual sigue usando el método existente
 
     // Inicializar EnemyAI primero
     this.enemyAISystem = new EnemyAISystem(this, this.player);
@@ -172,16 +243,64 @@ export class GameScene extends Phaser.Scene {
     // Inicializar sistemas centralizados (después de crear jugador y pachita)
     this.initializeSystems();
 
+    // === COLISIONES ESENCIALES CON SUELO ===
     // Add collision between player and ground
     this.physics.add.collider(this.player, this.groundLayer);
+    
+    // Add collision between enemies and ground
+    this.physics.add.collider(this.enemyAISystem.getEnemiesGroup(), this.groundLayer);
+    
+    console.log("🏗️ DEBUG: Colisiones con suelo configuradas");
+
+    // === SISTEMA DE COMBATE UNIFICADO ===
+    // Un solo sistema para manejar tanto daño como ataque
+    this.physics.add.overlap(
+      this.player, 
+      this.enemyAISystem.getEnemiesGroup(), 
+      (player: any, enemy: any) => this.handleCombatInteraction(player, enemy), 
+      undefined, 
+      this
+    );
+    
+    console.log("⚔️ DEBUG: Sistema de combate unificado activado");
 
     // === CAMERA ===
     // Set up camera to follow player
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.setDeadzone(50, 50);
+    this.cameras.main.setZoom(1.2); // Zoom ajustado para mejor proporción
 
-    // Set world bounds - no left bound limit, very large right bound
-    this.physics.world.setBounds(0, 0, 500 * 24, 180);
+    // Set world bounds - coincidir con tilemap real
+    this.physics.world.setBounds(0, 0, 500 * 24, 200); // Ajustar altura
+    this.cameras.main.setBounds(0, 0, 500 * 24, 200); // Coincidir con mundo físico
+
+    // === DEBUG VISUAL TEMPORAL ===
+    // Activar debug de física para ver hitboxes
+    console.log("🔍 DEBUG: Activando debug visual de hitboxes (temporal)");
+    this.physics.world.createDebugGraphic();
+    
+    // Desactivar después de 5 segundos para limpiar pantalla
+    this.time.delayedCall(5000, () => {
+      this.physics.world.debugGraphic.clear();
+      console.log("🔍 DEBUG: Debug visual desactivado - juego listo");
+    });
+
+    // === DEPURACIÓN DE SPRITES ===
+    // Contar todos los sprites para detectar duplicaciones
+    const allSprites = this.children.list;
+    const playerSprites = allSprites.filter(child => {
+      const hasTexture = 'texture' in child && child.texture !== undefined;
+      const isWaraTexture = hasTexture && (child.texture as any).key?.includes('wara');
+      return child instanceof Player || isWaraTexture;
+    });
+    console.log(`🔍 DEBUG: Total sprites en escena: ${allSprites.length}`);
+    console.log(`🔍 DEBUG: Sprites de Wara/Player: ${playerSprites.length}`);
+    playerSprites.forEach((sprite, index) => {
+      const textureKey = 'texture' in sprite ? (sprite.texture as any).key : 'unknown';
+      const isVisible = 'visible' in sprite ? sprite.visible : 'unknown';
+      const alpha = 'alpha' in sprite ? sprite.alpha : 'unknown';
+      console.log(`🔍 DEBUG: Sprite ${index}: key=${textureKey}, visible=${isVisible}, alpha=${alpha}`);
+    });
 
     // === ANIMATIONS ===
     this.createAnimations();
@@ -332,6 +451,87 @@ export class GameScene extends Phaser.Scene {
     (starterPlatform.body as Phaser.Physics.Arcade.Body).setAllowGravity(false).setImmovable(true);
   }
 
+  /**
+   * Maneja la interacción de combate unificada entre player y enemigos
+   */
+  private handleCombatInteraction(player: Player, enemy: any): void {
+    // Cooldown para evitar múltiples llamadas rápidas
+    const currentTime = this.time.now;
+    if (currentTime - this.lastCombatTime < this.combatCooldownMs) {
+      return; // Estamos en cooldown, ignorar
+    }
+    this.lastCombatTime = currentTime;
+    
+    console.log("⚔️ DEBUG: Interacción de combate detectada");
+    console.log("⚔️ DEBUG: Tipo de objeto enemigo:", typeof enemy);
+    
+    // CRÍTICO: Obtener la instancia del enemigo desde la referencia guardada en el sprite
+    let actualEnemy: any = enemy;
+    
+    // Si es un sprite, obtener la instancia del enemigo guardada
+    if (enemy instanceof Phaser.GameObjects.Sprite) {
+      console.log("⚔️ DEBUG: Enemigo es un sprite, obteniendo instancia desde enemyInstance");
+      
+      // Obtener la instancia del enemigo guardada en el sprite
+      const enemyInstance = (enemy as any).enemyInstance;
+      
+      if (enemyInstance && typeof enemyInstance.takeDamage === 'function') {
+        actualEnemy = enemyInstance;
+        console.log("✅ DEBUG: Instancia del enemigo obtenida desde sprite");
+        console.log("✅ DEBUG: Tipo de instancia:", typeof actualEnemy);
+      } else {
+        console.error("❌ ERROR: El sprite no tiene enemyInstance o no tiene takeDamage");
+        console.error("❌ enemyInstance:", enemyInstance);
+        console.error("❌ Métodos en enemyInstance:", enemyInstance ? Object.getOwnPropertyNames(enemyInstance) : 'null');
+        return;
+      }
+    }
+    
+    // Verificación final de que tenemos el objeto correcto con takeDamage
+    if (typeof actualEnemy.takeDamage !== 'function') {
+      console.error("❌ ERROR: El objeto colisionado no tiene el método takeDamage");
+      console.error("❌ Tipo:", typeof actualEnemy);
+      console.error("❌ Métodos disponibles:", Object.getOwnPropertyNames(actualEnemy));
+      return;
+    }
+    
+    // Verificar que el enemigo no esté muerto
+    if (actualEnemy.isDead) {
+      console.log("🛡️ DEBUG: Enemigo está muerto, ignorando");
+      return;
+    }
+    
+    // Si el player está atacando, aplicar daño al enemigo
+    if (player.isAttackWindow()) {
+      console.log("⚔️ DEBUG: Player está atacando, aplicando daño a enemigo");
+      const damage = player.getCurrentAttackDamage();
+      console.log(`⚔️ DEBUG: Daño a aplicar: ${damage}`);
+      
+      try {
+        // Pasar todos los parámetros requeridos por takeDamage del enemigo
+        actualEnemy.takeDamage(damage, player.x, player.y, 200);
+        console.log("✅ DEBUG: takeDamage ejecutado correctamente");
+      } catch (error) {
+        console.error("❌ ERROR al ejecutar takeDamage:", error);
+      }
+      return;
+    }
+    
+    // Si no está atacando, aplicar daño al player
+    // Verificar si el enemigo está en animación de muerte
+    const enemySprite = actualEnemy.sprite || actualEnemy;
+    if (enemySprite && enemySprite.anims && enemySprite.anims.currentAnim && 
+        enemySprite.anims.currentAnim.key.includes('death')) {
+      console.log("🛡️ DEBUG: Enemigo en animación de muerte, no aplica daño a player");
+      return;
+    }
+    
+    console.log("💔 DEBUG: Player no está atacando, aplicando daño al Player");
+    console.log(`💔 DEBUG: Vida actual del Player: ${player.health}`);
+    player.takeDamage(10);
+    console.log(`💔 DEBUG: Vida del Player después del daño: ${player.health}`);
+  }
+
   private createAnimations(): void {
     console.log("🔍 DEBUG: Creando animaciones...");
     
@@ -404,10 +604,182 @@ export class GameScene extends Phaser.Scene {
       console.log("✅ DEBUG: Animaciones del spritesheet creadas correctamente");
     }
 
-    // Ya no creamos animaciones de Wara porque usamos imágenes individuales
+    // === ANIMACIONES DE WARA (SPRITESHEETS) ===
     if (this.textures.exists('wara_idle')) {
-      console.log("🎨 DEBUG: Wara usa imágenes individuales (no se crean animaciones)");
+      console.log("🎨 DEBUG: Creando animaciones de Wara desde spritesheets...");
+      
+      // Detectar automáticamente el número de frames
+      const idleTexture = this.textures.get('wara_idle');
+      const idleFrames = Math.floor(idleTexture.source[0].width / 32); // 32 = frameWidth corregido
+      
+      console.log(`🔍 DEBUG: Wara idle tiene ${idleFrames} frames`);
+      
+      // Animación IDLE
+      this.anims.create({
+        key: "wara_idle_anim",
+        frames: this.anims.generateFrameNumbers("wara_idle", {
+          start: 0,
+          end: idleFrames - 1,
+        }),
+        frameRate: 8,
+        repeat: -1,
+      });
+
+      // Animación WALK
+      const walkTexture = this.textures.get('wara_walk');
+      const walkFrames = Math.floor(walkTexture.source[0].width / 32);
+      
+      this.anims.create({
+        key: "wara_walk_anim",
+        frames: this.anims.generateFrameNumbers("wara_walk", {
+          start: 0,
+          end: walkFrames - 1,
+        }),
+        frameRate: 10,
+        repeat: -1,
+      });
+
+      // Animación RUN
+      const runTexture = this.textures.get('wara_run');
+      const runFrames = Math.floor(runTexture.source[0].width / 32);
+      
+      this.anims.create({
+        key: "wara_run_anim",
+        frames: this.anims.generateFrameNumbers("wara_run", {
+          start: 0,
+          end: runFrames - 1,
+        }),
+        frameRate: 12,
+        repeat: -1,
+      });
+
+      // Animación JUMP
+      const jumpTexture = this.textures.get('wara_jump');
+      const jumpFrames = Math.floor(jumpTexture.source[0].width / 32);
+      
+      this.anims.create({
+        key: "wara_jump_anim",
+        frames: this.anims.generateFrameNumbers("wara_jump", {
+          start: 0,
+          end: jumpFrames - 1,
+        }),
+        frameRate: 10,
+        repeat: 0,
+      });
+
+      // Animación ATTACK
+      const attackTexture = this.textures.get('wara_attack');
+      const attackFrames = Math.floor(attackTexture.source[0].width / 32);
+      
+      this.anims.create({
+        key: "wara_attack_anim",
+        frames: this.anims.generateFrameNumbers("wara_attack", {
+          start: 0,
+          end: attackFrames - 1,
+        }),
+        frameRate: 15,
+        repeat: 0,
+      });
+
+      // Animación AIR ATTACK
+      const airAttackTexture = this.textures.get('wara_air_attack');
+      const airAttackFrames = Math.floor(airAttackTexture.source[0].width / 32);
+      
+      this.anims.create({
+        key: "wara_air_attack_anim",
+        frames: this.anims.generateFrameNumbers("wara_air_attack", {
+          start: 0,
+          end: airAttackFrames - 1,
+        }),
+        frameRate: 15,
+        repeat: 0,
+      });
+
+      console.log("✅ DEBUG: Animaciones de Wara creadas correctamente");
+      console.log(`🔍 DEBUG: Frames detectados - idle:${idleFrames} walk:${walkFrames} run:${runFrames} jump:${jumpFrames} attack:${attackFrames} air_attack:${airAttackFrames}`);
+    } else {
+      console.log("❌ DEBUG: No se encontraron spritesheets de Wara");
     }
+
+    // === ANIMACIONES DE ENEMIGOS ===
+    if (this.textures.exists('alma_angry_idle')) {
+      console.log("👾 DEBUG: Creando animaciones de Alma en Pena Enojada con medidas reales...");
+      
+      // Detectar frames para alma enojada idle (48x48)
+      const angryIdleTexture = this.textures.get('alma_angry_idle');
+      const angryIdleFrames = Math.floor(angryIdleTexture.source[0].width / 48); // 48 = frameWidth real
+      
+      // Animación IDLE (reposo)
+      this.anims.create({
+        key: "alma_angry_idle_anim",
+        frames: this.anims.generateFrameNumbers("alma_angry_idle", {
+          start: 0,
+          end: angryIdleFrames - 1,
+        }),
+        frameRate: 8, // Aumentado a 8 para mayor fluidez
+        repeat: -1,
+      });
+      
+      console.log(`👾 DEBUG: Alma angry idle tiene ${angryIdleFrames} frames (48x48)`);
+    }
+    
+    if (this.textures.exists('alma_angry_death')) {
+      // Detectar frames para alma enojada muerte (32x96)
+      const angryDeathTexture = this.textures.get('alma_angry_death');
+      const angryDeathFrames = Math.floor(angryDeathTexture.source[0].width / 32); // 32 = frameWidth real
+      
+      // Animación DEATH (muerte) - UNA SOLA VEZ
+      this.anims.create({
+        key: "alma_angry_death_anim",
+        frames: this.anims.generateFrameNumbers("alma_angry_death", {
+          start: 0,
+          end: angryDeathFrames - 1,
+        }),
+        frameRate: 10, // Aumentado a 10 para mayor fluidez
+        repeat: 0, // CRÍTICO: Solo una vez
+      });
+      
+      console.log(`👾 DEBUG: Alma angry death tiene ${angryDeathFrames} frames (32x96)`);
+    }
+    
+    // También crear animaciones para alma normal (fallback)
+    if (this.textures.exists('alma_idle')) {
+      console.log("👾 DEBUG: Creando animaciones de Alma normal...");
+      
+      const normalIdleTexture = this.textures.get('alma_idle');
+      const normalIdleFrames = Math.floor(normalIdleTexture.source[0].width / 48); // 48 = frameWidth real
+      
+      this.anims.create({
+        key: "alma_idle_anim",
+        frames: this.anims.generateFrameNumbers("alma_idle", {
+          start: 0,
+          end: normalIdleFrames - 1,
+        }),
+        frameRate: 8,
+        repeat: -1,
+      });
+      
+      console.log(`👾 DEBUG: Alma normal idle tiene ${normalIdleFrames} frames (48x48)`);
+    }
+    
+    if (this.textures.exists('alma_death')) {
+      const normalDeathTexture = this.textures.get('alma_death');
+      const normalDeathFrames = Math.floor(normalDeathTexture.source[0].width / 32); // 32 = frameWidth real
+      
+      this.anims.create({
+        key: "alma_death_anim",
+        frames: this.anims.generateFrameNumbers("alma_death", {
+          start: 0,
+          end: normalDeathFrames - 1,
+        }),
+        frameRate: 10,
+        repeat: 0,
+      });
+      
+      console.log(`👾 DEBUG: Alma normal death tiene ${normalDeathFrames} frames (32x96)`);
+    }
+    
+    console.log("✅ DEBUG: Animaciones de enemigos creadas correctamente con medidas reales");
   }
 
   update(): void {

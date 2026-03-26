@@ -103,30 +103,116 @@ export class BootScene extends Phaser.Scene {
     const tileset = manifest.tilesets.main;
     this.load.image(tileset.key, `${basePath}/${tileset.path}`);
 
-    // === SPRITES PERSONALIZADOS KARLO - NOMBRES EXACTOS ===
-    console.log("🔍 DEBUG: Cargando sprites con nombres exactos...");
+    // === SPRITES PERSONALIZADOS KARLO - COMO SPRITESHEETS ===
+    console.log("🔍 DEBUG: Cargando sprites como SPRITESHEETS (múltiples frames)...");
     
-    // Wara - Cargar como imágenes individuales (no spritesheets)
-    console.log("🔍 DEBUG: Cargando sprites individuales de Wara...");
+    // Wara - Cargar como SPRITESHEETS con múltiples frames
+    console.log("🔍 DEBUG: Cargando spritesheets de Wara...");
     
-    this.load.image('wara_idle', 'assets_karlo/Wara REPOSO PNG.png');
-    this.load.image('wara_walk', 'assets_karlo/Wara CAMINATA PNG.png');
-    this.load.image('wara_run', 'assets_karlo/Wara CORRER PNG.png');
-    this.load.image('wara_jump', 'assets_karlo/Wara SALTO PNG.png');
-    this.load.image('wara_attack', 'assets_karlo/Wara ATACANDO PNG.png');
-    this.load.image('wara_air_attack', 'assets_karlo/Wara ATACANDO EN EL AIRE PNG.png');
+    // Agregar listeners para detectar errores de carga
+    this.load.on('loaderror', (file: any) => {
+      console.error("❌ ERROR DE CARGA:", file.key, file.url);
+    });
+    
+    this.load.on('filecomplete', (file: any) => {
+      console.log("✅ ARCHIVO CARGADO:", file.key, file.url);
+    });
+    
+    // Intentar cargar con frameWidth más pequeño para evitar errores
+    const frameWidth = 32; // Reducir a 32px para evitar cero frames
+    const frameHeight = 32;
+    
+    console.log(`🔍 DEBUG: Usando frameWidth=${frameWidth}, frameHeight=${frameHeight}`);
+    
+    this.load.spritesheet('wara_idle', 'assets_karlo/Wara REPOSO PNG.png', {
+      frameWidth: frameWidth,
+      frameHeight: frameHeight
+    });
+    
+    this.load.spritesheet('wara_walk', 'assets_karlo/Wara CAMINATA PNG.png', {
+      frameWidth: frameWidth,
+      frameHeight: frameHeight
+    });
+    
+    this.load.spritesheet('wara_run', 'assets_karlo/Wara CORRER PNG.png', {
+      frameWidth: frameWidth,
+      frameHeight: frameHeight
+    });
+    
+    this.load.spritesheet('wara_jump', 'assets_karlo/Wara SALTO PNG.png', {
+      frameWidth: frameWidth,
+      frameHeight: frameHeight
+    });
+    
+    this.load.spritesheet('wara_attack', 'assets_karlo/Wara ATACANDO PNG.png', {
+      frameWidth: frameWidth,
+      frameHeight: frameHeight
+    });
+    
+    this.load.spritesheet('wara_air_attack', 'assets_karlo/Wara ATACANDO EN EL AIRE PNG.png', {
+      frameWidth: frameWidth,
+      frameHeight: frameHeight
+    });
 
-    // Enemigos - Alma en pena (cargar como imágenes individuales)
-    this.load.image('alma_idle', 'assets_karlo/Alma en pena reposo.png');
-    this.load.image('alma_angry', 'assets_karlo/Alma en pena enojada reposo.png');
-    this.load.image('alma_very_angry', 'assets_karlo/Alma en pena más enojada reposot.png');
-    this.load.image('alma_death', 'assets_karlo/Alma en pena muerte.png');
-    this.load.image('alma_angry_death', 'assets_karlo/Alma en pena más enojada muerte.png');
+    // Enemigos - Alma en pena (cargar como spritesheets con medidas reales)
+    this.load.spritesheet('alma_idle', 'assets_karlo/Alma en pena reposo.png', {
+      frameWidth: 48,
+      frameHeight: 48
+    });
+    
+    // Alma en pena enojada - keys específicas para animaciones con medidas reales
+    this.load.spritesheet('alma_angry_idle', 'assets_karlo/Alma en pena enojada reposo.png', {
+      frameWidth: 48,
+      frameHeight: 48
+    });
+    
+    this.load.spritesheet('alma_angry_death', 'assets_karlo/Alma en pena enojada muerte.png', {
+      frameWidth: 32,
+      frameHeight: 96
+    });
+    
+    // Verificar carga con listener de error
+    this.load.on('loaderror', (fileObj: any) => {
+      if (fileObj.key === 'alma_angry_death') {
+        console.error('❌ ERROR: No se pudo cargar Alma en pena enojada muerte.png');
+        console.error('❌ Verifica que el archivo exista en la ruta: assets_karlo/Alma en pena enojada muerte.png');
+      }
+    });
+    
+    // Verificar carga exitosa
+    this.load.on('filecomplete', (fileKey: string) => {
+      if (fileKey === 'alma_angry_death') {
+        console.log('✅ SUCCESS: Alma en pena enojada muerte.png cargado correctamente');
+      }
+    });
+    
+    this.load.spritesheet('alma_very_angry', 'assets_karlo/Alma en pena más enojada reposot.png', {
+      frameWidth: 32,
+      frameHeight: 48
+    });
+    
+    this.load.spritesheet('alma_death', 'assets_karlo/Alma en pena muerte.png', {
+      frameWidth: 32,
+      frameHeight: 96
+    });
+    
+    this.load.spritesheet('alma_angry_death', 'assets_karlo/Alma en pena más enojada muerte.png', {
+      frameWidth: 32,
+      frameHeight: 96
+    });
 
-    // Enemigos - Sirviente (cargar como imágenes individuales)
-    this.load.image('sirviente_idle', 'assets_karlo/Sirviente Pirichuchio aleteot.png');
-    this.load.image('sirviente_attack', 'assets_karlo/Sirviente Golpecito.png');
-    console.log("📦 DEBUG: Cargando Sirviente Golpecito.png → sirviente_attack");
+    // Enemigos - Sirviente (cargar como spritesheets)
+    this.load.spritesheet('sirviente_idle', 'assets_karlo/Sirviente Pirichuchio aleteot.png', {
+      frameWidth: frameWidth,
+      frameHeight: frameHeight
+    });
+    
+    this.load.spritesheet('sirviente_attack', 'assets_karlo/Sirviente Golpecito.png', {
+      frameWidth: frameWidth,
+      frameHeight: frameHeight
+    });
+    
+    console.log("📦 DEBUG: Spritesheets cargados correctamente");
     
     this.load.image('sirviente_death', 'assets_karlo/MUERTE sirviente Pirichuchio.png');
     console.log("📦 DEBUG: Cargando MUERTE sirviente Pirichuchio.png → sirviente_death");
