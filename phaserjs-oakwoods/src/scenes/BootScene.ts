@@ -154,7 +154,29 @@ export class BootScene extends Phaser.Scene {
       frameHeight: frameHeight
     });
 
-    // Enemigos - Alma en pena (cargar como spritesheets con medidas reales)
+    // Enemigos - Sirviente Pirichucho (nombres exactos de archivos)
+    this.load.spritesheet('sirviente_aleteo', 'assets_karlo/Sirviente Pirichuchio aleteot.png', {
+      frameWidth: 48,
+      frameHeight: 48
+    });
+    
+    this.load.spritesheet('sirviente_golpe', 'assets_karlo/Sirviente Golpecito.png', {
+      frameWidth: 48,
+      frameHeight: 96
+    });
+    
+    this.load.spritesheet('sirviente_muerte', 'assets_karlo/MUERTE sirviente Pirichuchio.png', {
+      frameWidth: 32,
+      frameHeight: 96
+    });
+    
+    console.log("📦 DEBUG: Sirviente Pirichucho spritesheets configurados con nombres exactos");
+    
+    this.load.spritesheet('alma_very_angry', 'assets_karlo/Alma en pena más enojada reposot.png', {
+      frameWidth: 32,
+      frameHeight: 48
+    });
+    
     this.load.spritesheet('alma_idle', 'assets_karlo/Alma en pena reposo.png', {
       frameWidth: 48,
       frameHeight: 48
@@ -184,38 +206,24 @@ export class BootScene extends Phaser.Scene {
       if (fileKey === 'alma_angry_death') {
         console.log('✅ SUCCESS: Alma en pena enojada muerte.png cargado correctamente');
       }
+      // Verificar carga de spritesheets del sirviente
+      if (fileKey.includes('sirviente')) {
+        console.log(`✅ SUCCESS: ${fileKey}.png cargado correctamente`);
+      }
     });
     
-    this.load.spritesheet('alma_very_angry', 'assets_karlo/Alma en pena más enojada reposot.png', {
-      frameWidth: 32,
-      frameHeight: 48
+    // Verificar errores de carga del sirviente
+    this.load.on('loaderror', (fileObj: any) => {
+      if (fileObj.key.includes('sirviente')) {
+        console.error(`❌ ERROR: No se pudo cargar ${fileObj.key}`);
+        console.error(`❌ Verifica que el archivo exista en assets_karlo/`);
+      }
     });
     
     this.load.spritesheet('alma_death', 'assets_karlo/Alma en pena muerte.png', {
       frameWidth: 32,
       frameHeight: 96
     });
-    
-    this.load.spritesheet('alma_angry_death', 'assets_karlo/Alma en pena más enojada muerte.png', {
-      frameWidth: 32,
-      frameHeight: 96
-    });
-
-    // Enemigos - Sirviente (cargar como spritesheets)
-    this.load.spritesheet('sirviente_idle', 'assets_karlo/Sirviente Pirichuchio aleteot.png', {
-      frameWidth: frameWidth,
-      frameHeight: frameHeight
-    });
-    
-    this.load.spritesheet('sirviente_attack', 'assets_karlo/Sirviente Golpecito.png', {
-      frameWidth: frameWidth,
-      frameHeight: frameHeight
-    });
-    
-    console.log("📦 DEBUG: Spritesheets cargados correctamente");
-    
-    this.load.image('sirviente_death', 'assets_karlo/MUERTE sirviente Pirichuchio.png');
-    console.log("📦 DEBUG: Cargando MUERTE sirviente Pirichuchio.png → sirviente_death");
 
     // PACHITA (usando Abby como alternativa)
     this.load.image('abby_idle', 'assets_karlo/Abby REPOSO PNG.png');

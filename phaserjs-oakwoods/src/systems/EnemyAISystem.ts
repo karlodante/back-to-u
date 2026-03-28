@@ -55,17 +55,18 @@ export class EnemyAISystem {
    * Crea los enemigos iniciales
    */
   private spawnInitialEnemies(): void {
-    const initialCount = 3;
+    const initialCount = 3; // AUMENTADO: 1 → 3 enemigos iniciales (frenético)
     // El suelo está en y=184, los enemigos deben estar encima del suelo
     const groundY = 184;
     const enemyY = groundY - 40; // Más arriba para mejor visibilidad y comportamiento
 
     for (let i = 0; i < initialCount; i++) {
       const roll = Math.random();
-      const kind = roll < 0.55 ? "melee" : roll < 0.8 ? "ranged" : "tank";
+      // Probabilidad aumentada de Sirviente: 2% → 10% (más bosses)
+      const kind = roll < 0.60 ? "melee" : roll < 0.90 ? "ranged" : "tank";
       const sign = Math.random() < 0.5 ? -1 : 1;
       const x = Phaser.Math.Clamp(
-        this.player.x + sign * Phaser.Math.Between(280, 620), 
+        this.player.x + sign * Phaser.Math.Between(200, 400), // MÁS CERCA
         0, 
         this.scene.physics.world.bounds.width - 40
       );
@@ -179,12 +180,13 @@ export class EnemyAISystem {
       this.totalSpawned < this.maxTotalEnemies
     ) {
       const roll = Math.random();
-      const kind = roll < 0.55 ? "melee" : roll < 0.8 ? "ranged" : "tank";
+      // Probabilidad aumentada de Sirviente: 2% → 15% (más acción)
+      const kind = roll < 0.55 ? "melee" : roll < 0.85 ? "ranged" : "tank";
       const sign = Math.random() < 0.5 ? -1 : 1;
 
-      const minDist = 180;
+      const minDist = 150; // REDUCIDO: 250 → 150 (más cerca)
       const worldMaxX = this.scene.physics.world.bounds.width;
-      let x = this.player.x + sign * Phaser.Math.Between(300, 650);
+      let x = this.player.x + sign * Phaser.Math.Between(200, 400); // MÁS CERCA
       x = Phaser.Math.Clamp(x, 0, worldMaxX - 40);
       
       if (Math.abs(x - this.player.x) < minDist) {

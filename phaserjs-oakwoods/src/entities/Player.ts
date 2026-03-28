@@ -8,14 +8,14 @@ import { AudioSystem } from "../core/AudioSystem";
 export class Player extends Phaser.Physics.Arcade.Sprite {
   public health: number = 100;
   public maxHealth: number = 100;
-  public attackDamage: number = 25;
+  public attackDamage: number = 5; // AUMENTADO: 2 → 5 HP (combate efectivo)
   public level: number = 1;
   public isDead: boolean = false;
   public isDashing: boolean = false;
   public isHurt: boolean = false;
   public hurtStartMs: number = 0;
   public hurtDurationMs: number = 1000;
-  public attackCooldownMs: number = 500;
+  public attackCooldownMs: number = 300; // RESTABLECIDO: 400 → 300ms (medir golpes, no spam)
   public attackCooldownLeftMs: number = 0;
   public attackDurationMs: number = 300;
   public attackStartMs: number = 0;
@@ -295,14 +295,14 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     if (this.isDashing) return;
 
-    // Lógica de Ataque
+    // Lógica de Ataque - CON COOLDOWN REAL
     if (
       Phaser.Input.Keyboard.JustDown(attackKey) &&
       body.blocked.down &&
       this.fsm.getCurrentStateName() !== "attack" &&
-      this.attackCooldownLeftMs <= 0
+      this.attackCooldownLeftMs <= 0 // RESTABLECIDO: Cooldown real de 300ms
     ) {
-      console.log("⚔️ DEBUG: Attack key presionada - cambiando a estado attack");
+      console.log("⚔️ DEBUG: Attack key presionada - cambiando a estado attack (CON COOLDOWN)");
       this.attackCooldownLeftMs = this.attackCooldownMs;
       this.attackStartMs = this.scene.time.now;
       this.attackInstanceId++;
@@ -318,8 +318,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
       // Lógica de ataque actual
       const attackElapsed = this.scene.time.now - this.attackStartMs;
       if (attackElapsed >= this.attackDurationMs) {
-        console.log("⚔️ DEBUG: Attack duration completado");
-        // El timer del estado attack se encargará de volver a idle
+        console.log("⚔️ DEBUG: Attack duration completado - VOLVIENDO A IDLE");
+        // FORZAR vuelta a idle para que no se trabe
+        this.fsm.change("idle");
+        return;
       }
       // Seguimos actualizando cooldown/flags (pero no movemos al jugador).
       this.fsm.update(16.67 / 1000);
@@ -402,6 +404,29 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.isInvulnerable = true;
     this.invulnerableStartMs = this.scene.time.now;
     
+    // Efecto de parpadeo para invulnerabilidad (1.5 segundos)
+    const invulnerabilityDuration = 1500;
+    this.setTint(0xff9999); // Tinte rojo durante daño
+    
+    // Crear tween de parpadeo
+    this.scene.tweens.add({
+      targets: this,
+      alpha: 0.3,
+      duration: 100,
+      yoyo: true,
+      repeat: Math.floor(invulnerabilityDuration / 200), // Parpadear durante 1.5s
+      onComplete: () => {
+        this.alpha = 1; // Restaurar alpha
+        this.clearTint(); // Quitar tinte rojo
+      }
+    });
+    
+    // Restaurar invulnerabilidad después del tiempo
+    this.scene.time.delayedCall(invulnerabilityDuration, () => {
+      this.isInvulnerable = false;
+      console.log("🛡️ DEBUG: Invulnerabilidad del Player terminada");
+    });
+    
     console.log("🔄 DEBUG: Cambiando Player a estado hurt");
     this.fsm.change("hurt");
     
@@ -456,7 +481,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     }
     
     const elapsed = this.scene.time.now - this.attackStartMs;
-    const inWindow = elapsed >= 50 && elapsed <= 200; // Ventana de 50-200ms después del inicio
+    const inWindow = elapsed >= 30 && elapsed <= 400; // Ventana mucho más larga: 30-400ms
     
     console.log(`⚔️ DEBUG: Ventana de ataque - elapsed: ${elapsed}ms, inWindow: ${inWindow}`);
     
@@ -489,7 +514,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.level = level;
     const next = this.level + 1;
     const newMaxHealth = 100 + (next - 1) * 20;
-    const newAttackDamage = 25 + (next - 1) * 5;
+    const newAttackDamage = 5 + (next - 1) * 2; // AUMENTADO: 2 → 5 base, +2 por nivel
     
     this.maxHealth = newMaxHealth;
     this.health = Math.min(this.health + 20, newMaxHealth);

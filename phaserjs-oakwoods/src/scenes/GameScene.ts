@@ -270,20 +270,18 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.setDeadzone(50, 50);
     this.cameras.main.setZoom(1.2); // Zoom ajustado para mejor proporción
 
-    // Set world bounds - coincidir con tilemap real
-    this.physics.world.setBounds(0, 0, 500 * 24, 200); // Ajustar altura
-    this.cameras.main.setBounds(0, 0, 500 * 24, 200); // Coincidir con mundo físico
-
-    // === DEBUG VISUAL TEMPORAL ===
-    // Activar debug de física para ver hitboxes
-    console.log("🔍 DEBUG: Activando debug visual de hitboxes (temporal)");
-    this.physics.world.createDebugGraphic();
+    // Set world bounds - ajustar al tamaño real del tilemap para evitar desbordamiento
+    const mapWidth = 500 * 24; // 12000px de ancho
+    const mapHeight = 200; // 200px de alto (suficiente para el suelo)
     
-    // Desactivar después de 5 segundos para limpiar pantalla
-    this.time.delayedCall(5000, () => {
-      this.physics.world.debugGraphic.clear();
-      console.log("🔍 DEBUG: Debug visual desactivado - juego listo");
-    });
+    this.physics.world.setBounds(0, 0, mapWidth, mapHeight);
+    this.cameras.main.setBounds(0, 0, mapWidth, mapHeight);
+    
+    console.log(`🎥 DEBUG: Cámara configurada - Mundo: ${mapWidth}x${mapHeight}, Zoom: 1.2`);
+
+    // === DEBUG VISUAL ELIMINADO ===
+    // Cuadrados morados eliminados para mejor experiencia
+    console.log("🔍 DEBUG: Debug visual desactivado - juego limpio");
 
     // === DEPURACIÓN DE SPRITES ===
     // Contar todos los sprites para detectar duplicaciones
@@ -479,6 +477,7 @@ export class GameScene extends Phaser.Scene {
         actualEnemy = enemyInstance;
         console.log("✅ DEBUG: Instancia del enemigo obtenida desde sprite");
         console.log("✅ DEBUG: Tipo de instancia:", typeof actualEnemy);
+        console.log("✅ DEBUG: enemyType:", actualEnemy.enemyType);
       } else {
         console.error("❌ ERROR: El sprite no tiene enemyInstance o no tiene takeDamage");
         console.error("❌ enemyInstance:", enemyInstance);
@@ -502,15 +501,29 @@ export class GameScene extends Phaser.Scene {
     }
     
     // Si el player está atacando, aplicar daño al enemigo
+    console.log("🔍 DEBUG: Verificando si player puede atacar...");
+    console.log(`🔍 DEBUG: player.isAttackWindow(): ${player.isAttackWindow()}`);
+    console.log(`🔍 DEBUG: player.getIsAttacking(): ${player.getIsAttacking()}`);
+    console.log(`🔍 DEBUG: player.attackCooldownLeftMs: ${player.attackCooldownLeftMs}`);
+    console.log(`🔍 DEBUG: actualEnemy.hp: ${actualEnemy.hp}/${actualEnemy.maxHp}`);
+    console.log(`🔍 DEBUG: actualEnemy.isDead: ${actualEnemy.isDead}`);
+    
     if (player.isAttackWindow()) {
       console.log("⚔️ DEBUG: Player está atacando, aplicando daño a enemigo");
       const damage = player.getCurrentAttackDamage();
       console.log(`⚔️ DEBUG: Daño a aplicar: ${damage}`);
+      console.log(`⚔️ DEBUG: HP del enemigo antes: ${actualEnemy.hp}/${actualEnemy.maxHp}`);
       
       try {
-        // Pasar todos los parámetros requeridos por takeDamage del enemigo
+        // SOLO usar el método normal - SIN FORZADO
         actualEnemy.takeDamage(damage, player.x, player.y, 200);
         console.log("✅ DEBUG: takeDamage ejecutado correctamente");
+        console.log(`⚔️ DEBUG: HP del enemigo después: ${actualEnemy.hp}/${actualEnemy.maxHp}`);
+        
+        // SOLO verificar si murió (sin forzar)
+        if (actualEnemy.hp <= 0) {
+          console.log("💀 DEBUG: Enemigo murió naturalmente - animación debería ejecutarse");
+        }
       } catch (error) {
         console.error("❌ ERROR al ejecutar takeDamage:", error);
       }
@@ -528,7 +541,34 @@ export class GameScene extends Phaser.Scene {
     
     console.log("💔 DEBUG: Player no está atacando, aplicando daño al Player");
     console.log(`💔 DEBUG: Vida actual del Player: ${player.health}`);
-    player.takeDamage(10);
+    
+    // Daño priorizado: Si es sirviente élite, daño mayor
+    let damageAmount = 10;
+    if (actualEnemy.enemyType === 'sirviente') {
+      // Daño base por contacto: 10 HP
+      damageAmount = 10;
+      console.log("⚔️ DEBUG: Sirviente ÉLITE aplica daño de contacto: 10 HP");
+      
+      // Verificar si está ejecutando ataque especial para daño aumentado
+      const enemySprite = actualEnemy.sprite || actualEnemy;
+      if (enemySprite && enemySprite.anims && enemySprite.anims.currentAnim) {
+        const currentAnim = enemySprite.anims.currentAnim.key;
+        
+        if (currentAnim === 'sirviente_attack') {
+          // Si está en animación de ataque, daño aumentado a 30 HP
+          damageAmount = 30;
+          console.log("⚔️ DEBUG: Sirviente ÉLITE aplica daño especial (ataque): 30 HP");
+        }
+        
+        // Verificar si está dash o golpe sísmico por estado
+        if (actualEnemy.isDashing) {
+          damageAmount = 25; // Dash alto daño
+          console.log("⚔️ DEBUG: Sirviente ÉLITE aplica daño de dash: 25 HP");
+        }
+      }
+    }
+    
+    player.takeDamage(damageAmount);
     console.log(`💔 DEBUG: Vida del Player después del daño: ${player.health}`);
   }
 
@@ -742,44 +782,64 @@ export class GameScene extends Phaser.Scene {
       console.log(`👾 DEBUG: Alma angry death tiene ${angryDeathFrames} frames (32x96)`);
     }
     
-    // También crear animaciones para alma normal (fallback)
-    if (this.textures.exists('alma_idle')) {
-      console.log("👾 DEBUG: Creando animaciones de Alma normal...");
+    // === ANIMACIONES DE SIRVIENTE PIRICHUCHO ===
+    if (this.textures.exists('sirviente_aleteo')) {
+      console.log("👾 DEBUG: Creando animaciones de Sirviente Pirichucho...");
       
-      const normalIdleTexture = this.textures.get('alma_idle');
-      const normalIdleFrames = Math.floor(normalIdleTexture.source[0].width / 48); // 48 = frameWidth real
+      // Animación WALK (aleteo) - 6 frames de 48x48
+      const walkTexture = this.textures.get('sirviente_aleteo');
+      const walkFrames = Math.floor(walkTexture.source[0].width / 48); // 288/48 = 6 frames
       
       this.anims.create({
-        key: "alma_idle_anim",
-        frames: this.anims.generateFrameNumbers("alma_idle", {
+        key: "sirviente_walk",
+        frames: this.anims.generateFrameNumbers("sirviente_aleteo", {
           start: 0,
-          end: normalIdleFrames - 1,
+          end: walkFrames - 1,
         }),
         frameRate: 8,
         repeat: -1,
       });
       
-      console.log(`👾 DEBUG: Alma normal idle tiene ${normalIdleFrames} frames (48x48)`);
+      console.log(`👾 DEBUG: Sirviente walk tiene ${walkFrames} frames (48x48)`);
     }
     
-    if (this.textures.exists('alma_death')) {
-      const normalDeathTexture = this.textures.get('alma_death');
-      const normalDeathFrames = Math.floor(normalDeathTexture.source[0].width / 32); // 32 = frameWidth real
+    if (this.textures.exists('sirviente_golpe')) {
+      // Animación ATTACK (golpecito) - 6 frames de 48x96
+      const attackTexture = this.textures.get('sirviente_golpe');
+      const attackFrames = Math.floor(attackTexture.source[0].width / 48); // 288/48 = 6 frames
       
       this.anims.create({
-        key: "alma_death_anim",
-        frames: this.anims.generateFrameNumbers("alma_death", {
+        key: "sirviente_attack",
+        frames: this.anims.generateFrameNumbers("sirviente_golpe", {
           start: 0,
-          end: normalDeathFrames - 1,
+          end: attackFrames - 1,
         }),
         frameRate: 10,
         repeat: 0,
       });
       
-      console.log(`👾 DEBUG: Alma normal death tiene ${normalDeathFrames} frames (32x96)`);
+      console.log(`👾 DEBUG: Sirviente attack tiene ${attackFrames} frames (48x96)`);
     }
     
-    console.log("✅ DEBUG: Animaciones de enemigos creadas correctamente con medidas reales");
+    if (this.textures.exists('sirviente_muerte')) {
+      // Animación DEATH (muerte) - 9 frames de 32x96
+      const deathTexture = this.textures.get('sirviente_muerte');
+      const deathFrames = Math.floor(deathTexture.source[0].width / 32); // 288/32 = 9 frames
+      
+      this.anims.create({
+        key: "sirviente_death",
+        frames: this.anims.generateFrameNumbers("sirviente_muerte", {
+          start: 0,
+          end: deathFrames - 1,
+        }),
+        frameRate: 10,
+        repeat: 0,
+      });
+      
+      console.log(`👾 DEBUG: Sirviente death tiene ${deathFrames} frames (32x96)`);
+    }
+    
+    console.log("✅ DEBUG: Animaciones de Sirviente Pirichucho creadas correctamente");
   }
 
   update(): void {
